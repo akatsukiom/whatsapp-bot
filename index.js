@@ -45,22 +45,28 @@ class WhatsAppManager {
     const sessionFolder = `./sessions/${sessionName}`;
     
     // Crear cliente de WhatsApp
-    const client = new Client({
-      authStrategy: new LocalAuth({ clientId: sessionName }),
-      puppeteer: {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ]
-      }
-    });
+// Reemplaza la configuración del cliente en tu código
+const client = new Client({
+  authStrategy: new LocalAuth({ clientId: sessionName }),
+  puppeteer: {
+    headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu',
+      '--disable-extensions',
+      '--disable-software-rasterizer',
+      '--ignore-certificate-errors',
+      '--allow-running-insecure-content'
+    ]
+  }
+});
     
     // Configurar eventos
     client.on('qr', (qr) => {

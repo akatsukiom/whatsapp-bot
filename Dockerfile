@@ -38,7 +38,15 @@ RUN apt-get update && apt-get install -y \
     libnss3 \
     lsb-release \
     xdg-utils \
-    wget
+    wget \
+    libgbm1 \
+    libvulkan1
+
+# Instalar dependencias adicionales para Chromium
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-browser \
+    chromium-driver
 
 # Crear directorio para la aplicación
 WORKDIR /app
@@ -46,14 +54,19 @@ WORKDIR /app
 # Copiar package.json y package-lock.json
 COPY package*.json ./
 
-# Instalar dependencias
+# Instalar dependencias de Node
 RUN npm install
 
 # Copiar el código de la aplicación
 COPY . .
 
 # Puerto que expone la aplicación
-EXPOSE 8000
+EXPOSE 8080
+
+# Variables de entorno para Puppeteer
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Comando para iniciar la aplicación
 CMD ["node", "index.js"]
