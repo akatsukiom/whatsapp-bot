@@ -230,37 +230,49 @@ class WhatsAppManager {
   }
   
   // Manejar mensajes entrantes
-  async handleIncomingMessage(message, client) {
-    console.log(`Mensaje recibido: ${message.body}`);
-    
-    // Si es un mensaje multimedia
-    if (message.hasMedia) {
-      await this.handleMediaMessage(message, client);
-      return;
-    }
-    
-    // Buscar respuesta en la base de datos de aprendizaje
-    const messageText = message.body.toLowerCase();
-    let response = null;
-    
-    // Buscar coincidencia exacta
-    if (this.learningDatabase.responses[messageText]) {
-      response = this.learningDatabase.responses[messageText];
-    } else {
-      // Buscar coincidencia parcial
-      for (const key in this.learningDatabase.responses) {
-        if (messageText.includes(key)) {
-          response = this.learningDatabase.responses[key];
-          break;
-        }
+// Manejar mensajes entrantes
+async handleIncomingMessage(message, client) {
+  console.log(`Mensaje recibido: ${message.body}`);
+  
+  // Verificar si es un mensaje de un chat privado o de un grupo
+  // Los IDs de chats de grupo en WhatsApp terminan con "@g.us"
+  const isGroup = message.from.endsWith('@g.us');
+  
+  // Si es un mensaje multimedia
+  if (message.hasMedia) {
+    await this.handleMediaMessage(message, client);
+    return;
+  }
+  
+  // Si es un mensaje privado (no de grupo), redirigir al número correcto
+  if (!isGroup) {
+    const redirectMessage = "Este es un bot automático. Por favor, envía tus mensajes al número 4961260597 para recibir atención personalizada. Gracias.";
+    client.sendMessage(message.from, redirectMessage);
+    return;
+  }
+  
+  // Si es un mensaje de grupo, buscar respuesta en la base de datos de aprendizaje
+  const messageText = message.body.toLowerCase();
+  let response = null;
+  
+  // Buscar coincidencia exacta
+  if (this.learningDatabase.responses[messageText]) {
+    response = this.learningDatabase.responses[messageText];
+  } else {
+    // Buscar coincidencia parcial
+    for (const key in this.learningDatabase.responses) {
+      if (messageText.includes(key)) {
+        response = this.learningDatabase.responses[key];
+        break;
       }
     }
-    
-    // Si encontramos una respuesta, la enviamos
-    if (response) {
-      client.sendMessage(message.from, response);
-    }
   }
+  
+  // Si encontramos una respuesta, la enviamos
+  if (response) {
+    client.sendMessage(message.from, response);
+  }
+}
   
   // Manejar mensajes multimedia
   async handleMediaMessage(message, client) {
