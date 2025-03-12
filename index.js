@@ -45,28 +45,28 @@ class WhatsAppManager {
     const sessionFolder = `./sessions/${sessionName}`;
     
     // Crear cliente de WhatsApp
-// Reemplaza la configuración del cliente en tu código
-const client = new Client({
-  authStrategy: new LocalAuth({ clientId: sessionName }),
-  puppeteer: {
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--disable-software-rasterizer',
-      '--ignore-certificate-errors',
-      '--allow-running-insecure-content'
-    ]
-  }
-});
+    // Reemplaza la configuración del cliente en tu código
+    const client = new Client({
+      authStrategy: new LocalAuth({ clientId: sessionName }),
+      puppeteer: {
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--disable-software-rasterizer',
+          '--ignore-certificate-errors',
+          '--allow-running-insecure-content'
+        ]
+      }
+    });
     
     // Configurar eventos
     client.on('qr', (qr) => {
@@ -173,7 +173,7 @@ const client = new Client({
   // Verificar si un mensaje es de un administrador
   isAdminMessage(message) {
     // Lista de números de administradores que pueden controlar el bot
-    const adminNumbers = ['52xxxxxxxxxx@c.us']; // Reemplazar con tu número
+    const adminNumbers = ['524961436947@c.us']; // Actualizado con el número proporcionado
     return adminNumbers.includes(message.from) && message.body.startsWith('!');
   }
   
@@ -327,6 +327,9 @@ function setupServer() {
   // Servir archivos estáticos
   app.use(express.static(path.join(__dirname, 'public')));
   
+  // Agregar soporte para JSON en las peticiones
+  app.use(express.json());
+  
   // Crear carpeta public si no existe
   if (!fs.existsSync('./public')) {
     fs.mkdirSync('./public');
@@ -335,6 +338,66 @@ function setupServer() {
   // Ruta principal
   app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  });
+  
+  // Ruta de administración
+  app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  });
+  
+  // Configurar eventos Socket.IO para administración
+  io.on('connection', (socket) => {
+    console.log('Cliente conectado');
+    
+    // Obtener todas las respuestas
+    socket.on('getResponses', () => {
+      try {
+        const data = fs.readFileSync('learning-data.json', 'utf8');
+        const learningData = JSON.parse(data);
+        socket.emit('responsesList', learningData.responses);
+      } catch (err) {
+        console.error('Error al leer las respuestas:', err);
+        socket.emit('error', 'No se pudieron cargar las respuestas');
+      }
+    });
+    
+    // Agregar nueva respuesta
+    socket.on('addResponse', ({ trigger, response }) => {
+      try {
+        const data = fs.readFileSync('learning-data.json', 'utf8');
+        const learningData = JSON.parse(data);
+        
+        learningData.responses[trigger.toLowerCase()] = response;
+        
+        fs.writeFileSync('learning-data.json', JSON.stringify(learningData, null, 2));
+        socket.emit('responseAdded');
+        console.log(`Respuesta agregada: "${trigger}" -> "${response}"`);
+      } catch (err) {
+        console.error('Error al agregar respuesta:', err);
+        socket.emit('error', 'No se pudo guardar la respuesta');
+      }
+    });
+    
+    // Eliminar respuesta
+    socket.on('deleteResponse', (trigger) => {
+      try {
+        const data = fs.readFileSync('learning-data.json', 'utf8');
+        const learningData = JSON.parse(data);
+        
+        if (learningData.responses[trigger]) {
+          delete learningData.responses[trigger];
+          
+          fs.writeFileSync('learning-data.json', JSON.stringify(learningData, null, 2));
+          socket.emit('responseDeleted');
+          console.log(`Respuesta eliminada: "${trigger}"`);
+        } else {
+          socket.emit('error', 'La respuesta no existe');
+        }
+      } catch (err) {
+        console.error('Error al eliminar respuesta:', err);
+        socket.emit('error', 'No se pudo eliminar la respuesta');
+      }
+    });
   });
   
   // Puerto para Railway o local
@@ -400,6 +463,12 @@ function createHtmlFile() {
         <h3>Estado de las conexiones:</h3>
         <div id="status-container">
           <!-- El estado se actualizará aquí -->
+        </div>
+      </div>
+      
+      <div class="row mt-4">
+        <div class="col-12 text-center">
+          <a href="/admin" class="btn btn-primary">Ir al Panel de Administración</a>
         </div>
       </div>
     </div>
@@ -515,6 +584,183 @@ function createHtmlFile() {
   console.log('Archivo HTML creado correctamente');
 }
 
+// También necesitamos crear la página de administración
+function createAdminHtmlFile() {
+  const adminHtmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Bot - Panel de Administración</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { 
+      padding: 20px;
+      background-color: #f7f7f7;
+    }
+    .admin-panel {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .response-table {
+      margin-top: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <h1 class="text-center mb-4">Panel de Administración - WhatsApp Bot</h1>
+        <div class="text-center mb-4">
+          <a href="/" class="btn btn-outline-secondary">Volver a la página principal</a>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Panel de agregar respuestas -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="admin-panel">
+          <h3>Agregar nueva respuesta</h3>
+          <form id="addResponseForm">
+            <div class="form-group">
+              <label for="trigger">Cuando el usuario escriba:</label>
+              <input type="text" class="form-control" id="trigger" placeholder="Ej: hola, información, precios, etc." required>
+            </div>
+            <div class="form-group">
+              <label for="response">El bot responderá:</label>
+              <textarea class="form-control" id="response" rows="3" placeholder="Escribe la respuesta que dará el bot..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar respuesta</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Tabla de respuestas existentes -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="admin-panel response-table">
+          <h3>Respuestas configuradas</h3>
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Cuando el usuario escriba</th>
+                  <th>El bot responderá</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="responsesTable">
+                <!-- Las respuestas se cargarán aquí -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // Conectar a Socket.IO
+    const socket = io();
+    
+    // Elementos del DOM
+    const addResponseForm = document.getElementById('addResponseForm');
+    const triggerInput = document.getElementById('trigger');
+    const responseInput = document.getElementById('response');
+    const responsesTable = document.getElementById('responsesTable');
+    
+    // Cargar respuestas existentes al iniciar
+    socket.emit('getResponses');
+    
+    // Recibir respuestas del servidor
+    socket.on('responsesList', (responses) => {
+      responsesTable.innerHTML = '';
+      
+      for (const [trigger, response] of Object.entries(responses)) {
+        const row = document.createElement('tr');
+        
+        row.innerHTML = \`
+          <td>\${trigger}</td>
+          <td>\${response}</td>
+          <td>
+            <button class="btn btn-sm btn-warning edit-btn" data-trigger="\${trigger}">Editar</button>
+            <button class="btn btn-sm btn-danger delete-btn" data-trigger="\${trigger}">Eliminar</button>
+          </td>
+        \`;
+        
+        responsesTable.appendChild(row);
+      }
+      
+      // Agregar event listeners a los botones
+      document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const trigger = e.target.getAttribute('data-trigger');
+          const response = responses[trigger];
+          
+          triggerInput.value = trigger;
+          responseInput.value = response;
+        });
+      });
+      
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          if (confirm('¿Estás seguro de eliminar esta respuesta?')) {
+            const trigger = e.target.getAttribute('data-trigger');
+            socket.emit('deleteResponse', trigger);
+          }
+        });
+      });
+    });
+    
+    // Enviar nueva respuesta
+    addResponseForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const trigger = triggerInput.value.trim().toLowerCase();
+      const response = responseInput.value.trim();
+      
+      if (trigger && response) {
+        socket.emit('addResponse', { trigger, response });
+        
+        // Limpiar formulario
+        triggerInput.value = '';
+        responseInput.value = '';
+      }
+    });
+    
+    // Confirmar acciones
+    socket.on('responseAdded', () => {
+      alert('Respuesta guardada correctamente');
+      socket.emit('getResponses');
+    });
+    
+    socket.on('responseDeleted', () => {
+      alert('Respuesta eliminada correctamente');
+      socket.emit('getResponses');
+    });
+    
+    socket.on('error', (msg) => {
+      alert('Error: ' + msg);
+    });
+  </script>
+</body>
+</html>`;
+
+  // Guardar el HTML de administración
+  fs.writeFileSync('./public/admin.html', adminHtmlContent);
+  console.log('Archivo admin.html creado correctamente');
+}
+
 // Crear el archivo learning-data.json inicial
 function createLearningDataFile() {
   const initialData = {
@@ -534,6 +780,7 @@ function createLearningDataFile() {
 async function main() {
   // Crear archivos necesarios
   createHtmlFile();
+  createAdminHtmlFile();  // Crear también el archivo de administración
   createLearningDataFile();
   
   // Configurar servidor
@@ -548,6 +795,7 @@ async function main() {
   
   console.log('Bot de WhatsApp iniciado con sistema de rotación de cuentas');
   console.log('Visita la página web para escanear los códigos QR');
+  console.log('Para administrar respuestas, visita /admin');
 }
 
 // Ejecutar la aplicación
