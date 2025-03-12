@@ -1,10 +1,11 @@
-FROM node:16
+FROM node:16-slim
 
-# Instalar dependencias de Chromium
+# Instalar dependencias esenciales para Puppeteer
 RUN apt-get update && apt-get install -y \
     gconf-service \
     libasound2 \
     libatk1.0-0 \
+    libatk-bridge2.0-0 \
     libc6 \
     libcairo2 \
     libcups2 \
@@ -35,38 +36,32 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     ca-certificates \
     fonts-liberation \
+    libappindicator1 \
     libnss3 \
     lsb-release \
     xdg-utils \
     wget \
     libgbm1 \
-    libvulkan1
+    procps \
+    xvfb
 
-# Instalar dependencias adicionales para Chromium
-RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-browser \
-    chromium-driver
-
-# Crear directorio para la aplicación
+# Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar package.json y package-lock.json
+# Copiar archivos de la aplicación
 COPY package*.json ./
-
-# Instalar dependencias de Node
 RUN npm install
 
-# Copiar el código de la aplicación
+# Copiar el resto de la aplicación
 COPY . .
 
-# Puerto que expone la aplicación
-EXPOSE 8080
+# Crear carpetas necesarias
+RUN mkdir -p public
+RUN mkdir -p routes
+RUN mkdir -p src/handlers
 
-# Variables de entorno para Puppeteer
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+# Exponer el puerto que usa la aplicación
+EXPOSE 8000
 
-# Comando para iniciar la aplicación
+# Iniciar la aplicación
 CMD ["node", "index.js"]
