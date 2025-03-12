@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Bot Manager</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { 
+      padding: 20px;
+      background-color: #f7f7f7;
+    }
+    .qr-container {
+      text-align: center;
+      margin: 20px 0;
+      padding: 20px;
+      border-radius: 10px;
+      background-color: white;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .status-indicator {
+      height: 15px;
+      width: 15px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 5px;
+    }
+    .status-ready {
+      background-color: #28a745;
+    }
+    .status-waiting {
+      background-color: #ffc107;
+    }
+    .status-error {
+      background-color: #dc3545;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="mb-4 text-center">WhatsApp Bot Manager</h1>
+    
+    <div class="row" id="accounts-container">
+      <!-- Las cuentas se agregarán aquí dinámicamente -->
+    </div>
+    
+    <div class="mt-4">
+      <h3>Estado de las conexiones:</h3>
+      <div id="status-container">
+        <!-- El estado se actualizará aquí -->
+      </div>
+    </div>
+  </div>
+  
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const accountsContainer = document.getElementById('accounts-container');
+    const statusContainer = document.getElementById('status-container');
+    
+    // Manejar códigos QR
+    socket.on('qr', (data) => {
+      console.log('QR recibido para:', data.sessionName);
+      
+      // Buscar si ya existe un contenedor para esta cuenta
+      let accountElement = document.getElementById('account-' + data.sessionName);
+      
+      if (!accountElement) {
+        // Crear nuevo contenedor si no existe
+        accountElement = document.createElement('div');
+        accountElement.id = 'account-' + data.sessionName;
+        accountElement.className = 'col-md-6 mb-4';
+        accountElement.innerHTML = `
+          <div class="qr-container">
+            <h3>${data.phoneNumber || data.sessionName}</h3>
+            <div id="status-${data.sessionName}">
+              <span class="status-indicator status-waiting"></span>
+              <span class="status-text">Esperando escaneo...</span>
+            </div>
+            <div id="qr-${data.sessionName}" class="mt-3">
+              <img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">
+            </div>
+          </div>
+        `;
+        accountsContainer.appendChild(accountElement);
+      } else {
+        // Actualizar QR existente
+        const qrElement = document.getElementById('qr-' + data.sessionName);
+        qrElement.innerHTML = `<img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">`;
+        
+        // Actualizar estado
+        const statusElement = document.getElementById('status-' + data.sessionName);
+        statusElement.innerHTML = `
+          <span class="status-indicator status-waiting"></span>
+          <span class="status-text">Esperando escaneo...</span>
+        `;
+      }
+    });
+    
+    // Manejar actualizaciones de estado
+    socket.on('status', (data) => {
+      console.log('Estado actualizado:', data);
+      
+      const statusElement = document.getElementById('status-' + data.sessionName);
+      if (statusElement) {
+        let statusClass = 'status-waiting';
+        let statusText = 'Desconocido';
+        
+        switch (data.status) {
+          case 'ready':
+            statusClass = 'status-ready';
+            statusText = 'Conectado';
+            // Ocultar QR cuando esté listo
+            const qrElement = document.getElementById('qr-' + data.sessionName);
+            if (qrElement) {
+              qrElement.innerHTML = '<p class="alert alert-success">WhatsApp conectado correctamente</p>';
+            }
+            break;
+          case 'authenticated':
+            statusClass = 'status-ready';
+            statusText = 'Autenticado';
+            break;
+          case 'disconnected':
+            statusClass = 'status-error';
+            statusText = 'Desconectado: ' + (data.reason || 'razón desconocida');
+            break;
+          default:
+            statusClass = 'status-waiting';
+            statusText = data.status;
+        }
+        
+        statusElement.innerHTML = `
+          <span class="status-indicator ${statusClass}"></span>
+          <span class="status-text">${statusText}</span>
+        `;
+      }
+      
+      // Actualizar contenedor de estado general
+      const now = new Date().toLocaleTimeString();
+      const statusUpdate = document.createElement('div');
+      statusUpdate.innerHTML = `
+        <p><small>${now}</small> - <strong>${data.phoneNumber || data.sessionName}</strong>: ${data.status}</p>
+      `;
+      statusContainer.prepend(statusUpdate);
+      
+      // Limitar a 10 mensajes de estado
+      if (statusContainer.children.length > 10) {
+        statusContainer.removeChild(statusContainer.lastChild);
+      }
+    });
+  </script>
+</body>
+</html>
