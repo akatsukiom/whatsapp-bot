@@ -37,39 +37,40 @@ class WhatsAppManager {
     console.log('Datos de aprendizaje guardados correctamente');
   }
   
-// Emitir el estado actual de todas las cuentas
-emitCurrentStatus() {
-  if (!this.io) return;
-  
-  this.accounts.forEach(account => {
-    let status = 'disconnected';
+  // Emitir el estado actual de todas las cuentas
+  emitCurrentStatus() {
+    if (!this.io) return;
     
-    try {
-      if (account.client && account.client.info) {
-        status = 'ready';
-      } else if (account.client && account.client.authStrategy) {
-        // Comprobamos si existe una sesión de autenticación sin llamar al método
-        const authStrategy = account.client.authStrategy;
-        // La verificación de autenticación depende de la versión de whatsapp-web.js
-        // Intentamos métodos alternativos para determinar si está autenticado
-        if (authStrategy._authenticated || 
-            (typeof authStrategy.isAuthenticated === 'boolean' && authStrategy.isAuthenticated) ||
-            fs.existsSync(`${config.paths.sessions}/${account.sessionName}/session`)) {
-          status = 'authenticated';
+    this.accounts.forEach(account => {
+      let status = 'disconnected';
+      
+      try {
+        if (account.client && account.client.info) {
+          status = 'ready';
+        } else if (account.client && account.client.authStrategy) {
+          // Comprobamos si existe una sesión de autenticación sin llamar al método
+          const authStrategy = account.client.authStrategy;
+          // La verificación de autenticación depende de la versión de whatsapp-web.js
+          // Intentamos métodos alternativos para determinar si está autenticado
+          if (authStrategy._authenticated || 
+              (typeof authStrategy.isAuthenticated === 'boolean' && authStrategy.isAuthenticated) ||
+              fs.existsSync(`${config.paths.sessions}/${account.sessionName}/session`)) {
+            status = 'authenticated';
+          }
         }
+      } catch (error) {
+        console.error(`Error al obtener estado de ${account.phoneNumber}:`, error.message);
       }
-    } catch (error) {
-      console.error(`Error al obtener estado de ${account.phoneNumber}:`, error.message);
-    }
-    
-    this.io.emit('status', {
-      sessionName: account.sessionName,
-      phoneNumber: account.phoneNumber,
-      status: status,
-      active: account.active
+      
+      this.io.emit('status', {
+        sessionName: account.sessionName,
+        phoneNumber: account.phoneNumber,
+        status: status,
+        active: account.active
+      });
     });
-  });
-}
+  }
+  
   // Agregar una nueva cuenta
   addAccount(phoneNumber, sessionName) {
     const sessionFolder = `${config.paths.sessions}/${sessionName}`;
@@ -326,14 +327,21 @@ emitCurrentStatus() {
       this.activeAccount.active = false;
       
       // Emitir estado actualizado para la cuenta que deja de ser activa
-      this.io.emit('status', {
-        sessionName: this.activeAccount.sessionName,
-        phoneNumber: this.activeAccount.phoneNumber,
-        status: this.activeAccount.client && this.activeAccount.client.info ? 'ready' : 
-                (this.activeAccount.client && this.activeAccount.client.authStrategy && 
-                 this.activeAccount.client.authStrategy.isAuthenticated() ? 'authenticated' : 'disconnected'),
-        active: false
-      });
+      try {
+        let status = 'disconnected';
+        if (this.activeAccount.client && this.activeAccount.client.info) {
+          status = 'ready';
+        }
+        
+        this.io.emit('status', {
+          sessionName: this.activeAccount.sessionName,
+          phoneNumber: this.activeAccount.phoneNumber,
+          status: status,
+          active: false
+        });
+      } catch (error) {
+        console.error('Error al emitir estado de cuenta desactivada:', error.message);
+      }
     }
     
     // Activar la nueva cuenta
@@ -341,14 +349,21 @@ emitCurrentStatus() {
     this.activeAccount = this.accounts[index];
     
     // Emitir estado actualizado para la nueva cuenta activa
-    this.io.emit('status', {
-      sessionName: this.activeAccount.sessionName,
-      phoneNumber: this.activeAccount.phoneNumber,
-      status: this.activeAccount.client && this.activeAccount.client.info ? 'ready' : 
-              (this.activeAccount.client && this.activeAccount.client.authStrategy && 
-               this.activeAccount.client.authStrategy.isAuthenticated() ? 'authenticated' : 'disconnected'),
-      active: true
-    });
+    try {
+      let status = 'disconnected';
+      if (this.activeAccount.client && this.activeAccount.client.info) {
+        status = 'ready';
+      }
+      
+      this.io.emit('status', {
+        sessionName: this.activeAccount.sessionName,
+        phoneNumber: this.activeAccount.phoneNumber,
+        status: status,
+        active: true
+      });
+    } catch (error) {
+      console.error('Error al emitir estado de cuenta activada:', error.message);
+    }
     
     console.log(`Cambiado a la cuenta ${this.activeAccount.phoneNumber}`);
     return true;
