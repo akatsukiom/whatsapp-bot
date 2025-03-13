@@ -72,6 +72,83 @@ class WhatsAppManager {
     }
   }
   
+  /**
+   * Actualiza o agrega una nueva respuesta
+   * @param {string} trigger - Palabra clave para activar la respuesta
+   * @param {string} response - Respuesta a enviar
+   * @returns {boolean} - true si se agregó correctamente
+   */
+  updateResponse(trigger, response) {
+    try {
+      const normalizedTrigger = trigger.toLowerCase().trim();
+      utils.log(`Actualizando respuesta para "${normalizedTrigger}"`, 'info');
+      
+      this.learningDatabase.responses[normalizedTrigger] = response;
+      const result = this.saveLearningData();
+      
+      if (result) {
+        utils.log(`Respuesta actualizada: "${normalizedTrigger}" -> "${response.substring(0, 50)}${response.length > 50 ? '...' : ''}"`, 'success');
+      }
+      
+      return result;
+    } catch (error) {
+      utils.log(`Error al actualizar respuesta: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
+  /**
+   * Elimina una respuesta existente
+   * @param {string} trigger - Palabra clave a eliminar
+   * @returns {boolean} - true si se eliminó correctamente
+   */
+  deleteResponse(trigger) {
+    try {
+      const normalizedTrigger = trigger.toLowerCase().trim();
+      utils.log(`Intentando eliminar respuesta para "${normalizedTrigger}"`, 'info');
+      
+      if (this.learningDatabase.responses[normalizedTrigger]) {
+        delete this.learningDatabase.responses[normalizedTrigger];
+        const result = this.saveLearningData();
+        
+        if (result) {
+          utils.log(`Respuesta eliminada: "${normalizedTrigger}"`, 'success');
+        }
+        
+        return result;
+      } else {
+        utils.log(`No se encontró la respuesta "${normalizedTrigger}" para eliminar`, 'warning');
+        return false;
+      }
+    } catch (error) {
+      utils.log(`Error al eliminar respuesta: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
+  /**
+   * Obtiene todas las respuestas configuradas
+   * @returns {Object} - Objeto con todas las respuestas
+   */
+  getAllResponses() {
+    return { ...this.learningDatabase.responses };
+  }
+
+  /**
+   * Recarga los datos de aprendizaje desde el archivo
+   * @returns {boolean} - true si se recargaron correctamente
+   */
+  reloadLearningData() {
+    try {
+      utils.log('Recargando datos de aprendizaje...', 'info');
+      this.loadLearningData();
+      return true;
+    } catch (error) {
+      utils.log(`Error al recargar datos de aprendizaje: ${error.message}`, 'error');
+      return false;
+    }
+  }
+  
   // Guardar datos de aprendizaje
   saveLearningData() {
     try {
@@ -196,7 +273,7 @@ class WhatsAppManager {
       });
     });
   }
-  
+
   // Agregar una nueva cuenta
   addAccount(phoneNumber, sessionName) {
     const sessionFolder = `${config.paths.sessions}/${sessionName}`;
@@ -405,8 +482,7 @@ class WhatsAppManager {
         
         // Opcional: Guardar esta respuesta en la base de aprendizaje
         const originalMessage = pendingMessage.message.toLowerCase();
-        this.learningDatabase.responses[originalMessage] = response;
-        this.saveLearningData();
+        this.updateResponse(originalMessage, response);
         
         // Eliminar el mensaje de pendientes
         delete this.pendingResponses[messageId];
@@ -447,10 +523,13 @@ class WhatsAppManager {
         const trigger = parts[0].trim().toLowerCase();
         const learnResponse = parts[1].trim();
         
-        this.learningDatabase.responses[trigger] = learnResponse;
-        this.saveLearningData();
+        const success = this.updateResponse(trigger, learnResponse);
         
-        client.sendMessage(message.from, `Aprendido: "${trigger}" -> "${learnResponse}"`);
+        if (success) {
+          client.sendMessage(message.from, `Aprendido: "${trigger}" -> "${learnResponse}"`);
+        } else {
+          client.sendMessage(message.from, `❌ Error al guardar la respuesta. Por favor, inténtalo de nuevo.`);
+        }
         break;
         
       case '!status':
@@ -468,6 +547,9 @@ class WhatsAppManager {
         if (this.pendingResponses && Object.keys(this.pendingResponses).length > 0) {
           statusMsg += '\nMensajes pendientes de respuesta: ' + Object.keys(this.pendingResponses).length;
         }
+        
+        // Añadir información sobre respuestas
+        statusMsg += `\n\nRespuestas configuradas: ${Object.keys(this.learningDatabase.responses || {}).length}`;
         
         client.sendMessage(message.from, statusMsg);
         break;
@@ -494,14 +576,24 @@ class WhatsAppManager {
         client.sendMessage(message.from, pendingMsg);
         break;
         
+      case '!reload':
+        // Recargar datos de aprendizaje
+        const reloadSuccess = this.reloadLearningData();
+        if (reloadSuccess) {
+          client.sendMessage(message.from, `✅ Datos de aprendizaje recargados correctamente. Respuestas disponibles: ${Object.keys(this.learningDatabase.responses || {}).length}`);
+        } else {
+          client.sendMessage(message.from, `❌ Error al recargar datos de aprendizaje.`);
+        }
+        break;
+        
       default:
-        client.sendMessage(message.from, 'Comando desconocido. Comandos disponibles: !switch, !learn, !status, !pendientes, !responder');
+        client.sendMessage(message.from, 'Comando desconocido. Comandos disponibles: !switch, !learn, !status, !pendientes, !responder, !reload');
     }
   }
   
   // Manejar mensajes entrantes
   async handleIncomingMessage(message, client) {
-    utils.log(`Mensaje recibido: ${message.body} de ${message.from}`, 'info');
+    utils.log(`Mensaje recibido: "${message.body}" de ${message.from}`, 'info');
     
     // Verificar si es un mensaje de un chat privado o de un grupo
     const isGroup = message.from.endsWith('@g.us');
@@ -522,13 +614,34 @@ class WhatsAppManager {
     
     // Procesar mensaje de grupo
     utils.log('Procesando mensaje de grupo...', 'info');
-    const messageText = message.body.toLowerCase();
+    
+    // Verificar que tenemos respuestas cargadas
+    if (!this.learningDatabase || !this.learningDatabase.responses) {
+      utils.log('Base de datos de respuestas no inicializada o vacía. Recargando...', 'warning');
+      this.loadLearningData();
+      
+      // Si aún no hay respuestas, usar respuestas por defecto
+      if (!this.learningDatabase || !this.learningDatabase.responses) {
+        utils.log('No se pudieron cargar respuestas. Usando respuestas por defecto', 'warning');
+        this.learningDatabase = JSON.parse(JSON.stringify(config.initialLearningData));
+      }
+    }
+    
+    // Imprimir todas las claves disponibles para depuración
+    const availableKeys = Object.keys(this.learningDatabase.responses || {});
+    utils.log(`Respuestas disponibles (${availableKeys.length}): ${availableKeys.slice(0, 5).join(', ')}${availableKeys.length > 5 ? '...' : ''}`, 'debug');
+    
+    const messageText = message.body.toLowerCase().trim();
+    utils.log(`Buscando respuesta para: "${messageText}"`, 'info');
+    
     let response = null;
+    let matchType = '';
     
     // Buscar coincidencia exacta
     if (this.learningDatabase.responses[messageText]) {
       utils.log(`Coincidencia exacta encontrada para: "${messageText}"`, 'success');
       response = this.learningDatabase.responses[messageText];
+      matchType = 'exacta';
     } else {
       // Buscar coincidencia parcial
       let foundPartialMatch = false;
@@ -536,6 +649,7 @@ class WhatsAppManager {
         if (messageText.includes(key)) {
           utils.log(`Coincidencia parcial encontrada: "${messageText}" incluye "${key}"`, 'success');
           response = this.learningDatabase.responses[key];
+          matchType = 'parcial';
           foundPartialMatch = true;
           break;
         }
@@ -548,13 +662,14 @@ class WhatsAppManager {
         if (mostSimilarKey) {
           utils.log(`Coincidencia similar encontrada: "${messageText}" -> "${mostSimilarKey}"`, 'success');
           response = this.learningDatabase.responses[mostSimilarKey];
+          matchType = 'similar';
         }
       }
     }
     
     // Si encontramos una respuesta, la enviamos
     if (response) {
-      utils.log(`Enviando respuesta: "${response}"`, 'info');
+      utils.log(`Enviando respuesta (coincidencia ${matchType}): "${response.substring(0, 50)}${response.length > 50 ? '...' : ''}"`, 'info');
       try {
         // Asegurarse de que el cliente esté activo y usar la cuenta activa
         const clientToUse = this.activeAccount ? this.activeAccount.client : client;
@@ -570,7 +685,10 @@ class WhatsAppManager {
             utils.log('Respuesta enviada con cliente original', 'success');
           } catch (secondError) {
             utils.log(`Error al enviar con cliente original: ${secondError.message}`, 'error');
+            this.forwardToAdmin(message, client, isGroup, 'Error al enviar respuesta');
           }
+        } else {
+          this.forwardToAdmin(message, client, isGroup, 'Error al enviar respuesta');
         }
       }
     } else {
@@ -581,7 +699,7 @@ class WhatsAppManager {
   }
   
   // Reenviar mensaje al administrador
-  async forwardToAdmin(message, client, isGroup) {
+  async forwardToAdmin(message, client, isGroup, errorInfo = '') {
     try {
       // Guardamos temporalmente el chat que requiere respuesta
       if (!this.pendingResponses) {
@@ -601,16 +719,25 @@ class WhatsAppManager {
       // Reenviar a todos los administradores configurados
       for (const adminNumber of config.whatsapp.adminNumbers) {
         utils.log(`Reenviando mensaje a administrador ${adminNumber}`, 'info');
-        // Agregamos un ID único para poder identificar a qué mensaje responde el admin
-        await client.sendMessage(adminNumber, 
-          `⚠️ *MENSAJE SIN RESPUESTA* ⚠️\n\n` +
-          `*De:* ${this.pendingResponses[messageId].contact}\n` +
-          `*Chat:* ${message.from}\n` +
-          `*Grupo:* ${isGroup ? 'Sí' : 'No'}\n` +
-          `*Mensaje:* ${message.body}\n\n` +
-          `Para responder, escribe:\n` +
-          `!responder ${messageId} | Tu respuesta aquí`
-        );
+        
+        let adminMsg = `⚠️ *MENSAJE SIN RESPUESTA* ⚠️\n\n`;
+        
+        if (errorInfo) {
+          adminMsg += `*ADVERTENCIA*: ${errorInfo}\n\n`;
+        }
+        
+        adminMsg += `*De:* ${this.pendingResponses[messageId].contact}\n` +
+                  `*Chat:* ${message.from}\n` +
+                  `*Grupo:* ${isGroup ? 'Sí' : 'No'}\n` +
+                  `*Mensaje:* ${message.body}\n\n`;
+                  
+        // Información de depuración
+        adminMsg += `*DEBUG*: Respuestas disponibles: ${Object.keys(this.learningDatabase.responses || {}).length}\n\n`;
+        
+        adminMsg += `Para responder, escribe:\n` +
+                  `!responder ${messageId} | Tu respuesta aquí`;
+        
+        await client.sendMessage(adminNumber, adminMsg);
       }
       
       // Limpiar mensajes pendientes antiguos

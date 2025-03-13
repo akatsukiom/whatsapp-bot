@@ -118,7 +118,7 @@ function setupServer() {
         socket.emit('error', 'Error interno del servidor');
       }
     });
-
+    
     // Agregar nueva cuenta
     socket.on('addAccount', (data) => {
       try {
@@ -167,33 +167,29 @@ function setupServer() {
       try {
         console.log('Solicitud recibida para obtener respuestas');
         
-        // Verificar que el archivo exista
-        if (!fs.existsSync(config.files.learningData)) {
-          console.error(`Archivo ${config.files.learningData} no encontrado`);
-          socket.emit('error', `Archivo de respuestas no encontrado: ${config.files.learningData}`);
-          return;
+        if (global.whatsappManager) {
+          // Usar el método de WhatsAppManager para obtener respuestas
+          const responses = global.whatsappManager.getAllResponses();
+          console.log(`Enviando ${Object.keys(responses).length} respuestas al cliente`);
+          socket.emit('responsesList', responses);
+        } else {
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('error', 'El gestor de WhatsApp aún no está inicializado');
+          
+          // Fallback: cargar respuestas directamente del archivo
+          if (fs.existsSync(config.files.learningData)) {
+            try {
+              const data = fs.readFileSync(config.files.learningData, 'utf8');
+              const learningData = JSON.parse(data);
+              socket.emit('responsesList', learningData.responses || {});
+            } catch (parseError) {
+              console.error('Error al parsear JSON:', parseError);
+              socket.emit('error', 'El archivo de respuestas contiene JSON inválido');
+            }
+          } else {
+            socket.emit('error', 'Archivo de respuestas no encontrado');
+          }
         }
-        
-        const data = fs.readFileSync(config.files.learningData, 'utf8');
-        console.log(`Archivo ${config.files.learningData} leído correctamente`);
-        
-        let learningData;
-        try {
-          learningData = JSON.parse(data);
-          console.log('Datos parseados correctamente');
-        } catch (parseError) {
-          console.error('Error al parsear JSON:', parseError);
-          socket.emit('error', 'El archivo de respuestas contiene JSON inválido');
-          return;
-        }
-        
-        if (!learningData.responses) {
-          console.warn('El archivo no contiene la propiedad "responses"');
-          learningData.responses = {};
-        }
-        
-        console.log(`Enviando ${Object.keys(learningData.responses).length} respuestas al cliente`);
-        socket.emit('responsesList', learningData.responses);
       } catch (err) {
         console.error('Error detallado al leer las respuestas:', err);
         console.error('Mensaje de error:', err.message);
@@ -207,54 +203,48 @@ function setupServer() {
       try {
         console.log(`Intentando guardar respuesta: "${trigger}" -> "${response}"`);
         
-        // Verificar que el archivo exista
-        if (!fs.existsSync(config.files.learningData)) {
-          console.log(`Archivo ${config.files.learningData} no encontrado, creando uno nuevo`);
-          fs.writeFileSync(config.files.learningData, JSON.stringify({ responses: {} }, null, 2));
-        }
-        
-        const data = fs.readFileSync(config.files.learningData, 'utf8');
-        console.log('Archivo leído correctamente');
-        
-        let learningData;
-        try {
-          learningData = JSON.parse(data);
-          console.log('Datos parseados correctamente');
-        } catch (parseError) {
-          console.error('Error al parsear JSON, creando un objeto nuevo');
-          learningData = { responses: {} };
-        }
-        
-        if (!learningData.responses) {
-          console.warn('El objeto no tenía la propiedad "responses", agregándola');
-          learningData.responses = {};
-        }
-        
-        // Guardar la respuesta
-        learningData.responses[trigger.toLowerCase()] = response;
-        
-        // Verificar permisos de escritura
-        try {
-          const tempPath = `${config.files.learningData}.tmp`;
-          fs.writeFileSync(tempPath, 'test');
-          fs.unlinkSync(tempPath);
-          console.log('Permisos de escritura verificados correctamente');
-        } catch (permError) {
-          console.error('Error de permisos al intentar escribir archivo:', permError);
-          socket.emit('error', 'No hay permisos para escribir en el archivo de datos');
+        if (!trigger || !response) {
+          socket.emit('error', 'La pregunta y respuesta no pueden estar vacías');
           return;
         }
         
-        // Guardar el archivo
-        fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
-        console.log('Archivo guardado correctamente');
-        
-        // Confirmar al cliente
-        socket.emit('responseAdded');
-        console.log(`Respuesta agregada: "${trigger}" -> "${response}"`);
-        
-        // Actualizar la lista en todos los clientes conectados
-        io.emit('responsesUpdated');
+        if (global.whatsappManager) {
+          // Usar el método de WhatsAppManager para actualizar respuesta
+          const success = global.whatsappManager.updateResponse(trigger, response);
+          
+          if (success) {
+            console.log(`Respuesta agregada: "${trigger}" -> "${response}"`);
+            socket.emit('responseAdded');
+            io.emit('responsesUpdated');
+          } else {
+            socket.emit('error', 'Error al guardar la respuesta');
+          }
+        } else {
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+          
+          // Fallback: guardar directamente en el archivo
+          try {
+            let learningData = { responses: {} };
+            
+            if (fs.existsSync(config.files.learningData)) {
+              const data = fs.readFileSync(config.files.learningData, 'utf8');
+              learningData = JSON.parse(data);
+              if (!learningData.responses) {
+                learningData.responses = {};
+              }
+            }
+            
+            learningData.responses[trigger.toLowerCase()] = response;
+            fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
+            
+            socket.emit('responseAdded');
+            io.emit('responsesUpdated');
+          } catch (fileError) {
+            console.error('Error al guardar en archivo:', fileError);
+            socket.emit('error', 'No se pudo guardar la respuesta: ' + fileError.message);
+          }
+        }
       } catch (err) {
         console.error('Error detallado al agregar respuesta:', err);
         console.error('Mensaje de error:', err.message);
@@ -268,46 +258,43 @@ function setupServer() {
       try {
         console.log(`Intentando eliminar respuesta: "${trigger}"`);
         
-        if (!fs.existsSync(config.files.learningData)) {
-          console.error(`Archivo ${config.files.learningData} no encontrado`);
-          socket.emit('error', 'El archivo de respuestas no existe');
-          return;
-        }
-        
-        const data = fs.readFileSync(config.files.learningData, 'utf8');
-        console.log('Archivo leído correctamente');
-        
-        let learningData;
-        try {
-          learningData = JSON.parse(data);
-          console.log('Datos parseados correctamente');
-        } catch (parseError) {
-          console.error('Error al parsear JSON:', parseError);
-          socket.emit('error', 'El archivo de respuestas contiene JSON inválido');
-          return;
-        }
-        
-        if (!learningData.responses) {
-          console.warn('El objeto no tiene la propiedad "responses"');
-          socket.emit('error', 'No hay respuestas configuradas');
-          return;
-        }
-        
-        if (learningData.responses[trigger]) {
-          delete learningData.responses[trigger];
-          console.log(`Respuesta "${trigger}" eliminada`);
+        if (global.whatsappManager) {
+          // Usar el método de WhatsAppManager para eliminar respuesta
+          const success = global.whatsappManager.deleteResponse(trigger);
           
-          fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
-          console.log('Archivo guardado correctamente');
-          
-          socket.emit('responseDeleted');
-          console.log(`Respuesta eliminada: "${trigger}"`);
-          
-          // Actualizar la lista en todos los clientes conectados
-          io.emit('responsesUpdated');
+          if (success) {
+            console.log(`Respuesta eliminada: "${trigger}"`);
+            socket.emit('responseDeleted');
+            io.emit('responsesUpdated');
+          } else {
+            socket.emit('error', 'No se pudo eliminar la respuesta');
+          }
         } else {
-          console.warn(`Respuesta "${trigger}" no encontrada`);
-          socket.emit('error', 'La respuesta no existe');
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+          
+          // Fallback: eliminar directamente del archivo
+          try {
+            if (fs.existsSync(config.files.learningData)) {
+              const data = fs.readFileSync(config.files.learningData, 'utf8');
+              const learningData = JSON.parse(data);
+              
+              if (learningData.responses && learningData.responses[trigger]) {
+                delete learningData.responses[trigger];
+                fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
+                
+                socket.emit('responseDeleted');
+                io.emit('responsesUpdated');
+              } else {
+                socket.emit('error', 'La respuesta no existe');
+              }
+            } else {
+              socket.emit('error', 'El archivo de respuestas no existe');
+            }
+          } catch (fileError) {
+            console.error('Error al eliminar del archivo:', fileError);
+            socket.emit('error', 'No se pudo eliminar la respuesta: ' + fileError.message);
+          }
         }
       } catch (err) {
         console.error('Error detallado al eliminar respuesta:', err);
@@ -321,14 +308,28 @@ function setupServer() {
     socket.on('forceReload', () => {
       try {
         console.log('Solicitando recarga forzada de respuestas');
-        if (fs.existsSync(config.files.learningData)) {
-          const data = fs.readFileSync(config.files.learningData, 'utf8');
-          const learningData = JSON.parse(data);
-          socket.emit('responsesList', learningData.responses || {});
-          console.log('Recarga forzada completada');
+        
+        if (global.whatsappManager) {
+          // Usar el método de WhatsAppManager para recargar datos
+          const success = global.whatsappManager.reloadLearningData();
+          if (success) {
+            const responses = global.whatsappManager.getAllResponses();
+            socket.emit('responsesList', responses);
+            console.log('Recarga forzada completada');
+          } else {
+            socket.emit('error', 'Error al recargar respuestas');
+          }
         } else {
-          console.warn('No se pudo realizar la recarga forzada, archivo no encontrado');
-          socket.emit('error', 'Archivo de respuestas no encontrado');
+          console.warn('WhatsAppManager no inicializado, cargando directamente del archivo');
+          if (fs.existsSync(config.files.learningData)) {
+            const data = fs.readFileSync(config.files.learningData, 'utf8');
+            const learningData = JSON.parse(data);
+            socket.emit('responsesList', learningData.responses || {});
+            console.log('Recarga forzada desde archivo completada');
+          } else {
+            console.warn('No se pudo realizar la recarga forzada, archivo no encontrado');
+            socket.emit('error', 'Archivo de respuestas no encontrado');
+          }
         }
       } catch (err) {
         console.error('Error en recarga forzada:', err);
@@ -339,7 +340,6 @@ function setupServer() {
     // Ping para mantener viva la conexión
     socket.on('ping', () => {
       // Este evento simplemente mantiene la conexión activa
-      // No necesita hacer nada más que recibir el ping
     });
   });
   

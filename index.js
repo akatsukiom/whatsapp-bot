@@ -51,6 +51,22 @@ async function main() {
   const manager = new WhatsAppManager(io);
   global.whatsappManager = manager; // Hacer global el manager para accederlo desde Socket.IO
   
+  // Verificar que los datos de aprendizaje se cargaron correctamente
+  if (Object.keys(manager.learningDatabase.responses || {}).length > 0) {
+    utils.log(`Bot inicializado con ${Object.keys(manager.learningDatabase.responses).length} respuestas configuradas`, 'success');
+  } else {
+    utils.log('¡ADVERTENCIA! No se encontraron respuestas en la base de datos. Se usarán respuestas por defecto.', 'warning');
+    
+    // Intentar cargar las respuestas por defecto
+    try {
+      manager.learningDatabase = JSON.parse(JSON.stringify(config.initialLearningData));
+      manager.saveLearningData();
+      utils.log('Se han cargado las respuestas por defecto', 'info');
+    } catch (error) {
+      utils.log(`Error al cargar respuestas por defecto: ${error.message}`, 'error');
+    }
+  }
+  
   // Agregar cuentas configuradas
   utils.log('Configurando cuentas de WhatsApp...', 'info');
   config.whatsapp.accounts.forEach(account => {
