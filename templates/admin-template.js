@@ -39,9 +39,38 @@ function createAdminHtml() {
       margin-bottom: 30px;
       box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      display: none;
+    }
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1100;
+    }
   </style>
 </head>
 <body>
+  <!-- Overlay de carga -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner-border text-success" role="status">
+      <span class="visually-hidden">Cargando...</span>
+    </div>
+  </div>
+
+  <!-- Contenedor de notificaciones -->
+  <div class="toast-container" id="toastContainer"></div>
+
   <div class="container">
     <div class="header-container">
       <h1 class="text-center mb-0"><i class="bi bi-whatsapp me-2"></i>Panel de Administración</h1>
@@ -52,6 +81,9 @@ function createAdminHtml() {
         <a href="/" class="btn btn-outline-secondary">
           <i class="bi bi-arrow-left me-2"></i>Volver a la página principal
         </a>
+        <button id="reloadBtn" class="btn btn-info ms-2">
+          <i class="bi bi-arrow-clockwise me-2"></i>Recargar respuestas
+        </button>
       </div>
     </div>
     
@@ -111,13 +143,56 @@ function createAdminHtml() {
     const triggerInput = document.getElementById('trigger');
     const responseInput = document.getElementById('response');
     const responsesTable = document.getElementById('responsesTable');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const toastContainer = document.getElementById('toastContainer');
+    
+    // Función para mostrar/ocultar overlay de carga
+    function toggleLoading(show) {
+      loadingOverlay.style.display = show ? 'flex' : 'none';
+    }
+    
+    // Función para mostrar notificaciones
+    function showToast(message, type = 'success') {
+      const toastId = 'toast-' + Date.now();
+      const toastHtml = \`
+        <div id="\${toastId}" class="toast align-items-center text-white bg-\${type === 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
+          <div class="d-flex">
+            <div class="toast-body">
+              <i class="bi bi-\${type === 'success' ? 'check-circle' : 'exclamation-circle'}-fill me-2"></i>
+              \${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+        </div>
+      \`;
+      
+      toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+      const toastElement = document.getElementById(toastId);
+      
+      // Mostrar el toast
+      toastElement.classList.add('show');
+      
+      // Remover después de 5 segundos
+      setTimeout(() => {
+        if (toastElement && toastElement.parentNode) {
+          toastElement.parentNode.removeChild(toastElement);
+        }
+      }, 5000);
+    }
     
     // Cargar respuestas existentes al iniciar
+    toggleLoading(true);
     socket.emit('getResponses');
     
     // Recibir respuestas del servidor
     socket.on('responsesList', (responses) => {
+      toggleLoading(false);
       responsesTable.innerHTML = '';
+      
+      if (!responses || Object.keys(responses).length === 0) {
+        responsesTable.innerHTML = '<tr><td colspan="3" class="text-center">No hay respuestas configuradas</td></tr>';
+        return;
+      }
       
       for (const [trigger, response] of Object.entries(responses)) {
         const row = document.createElement('tr');
@@ -141,7 +216,7 @@ function createAdminHtml() {
       // Agregar event listeners a los botones
       document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-          const trigger = e.target.getAttribute('data-trigger');
+          const trigger = e.target.closest('.edit-btn').getAttribute('data-trigger');
           const response = responses[trigger];
           
           triggerInput.value = trigger;
@@ -154,8 +229,10 @@ function createAdminHtml() {
       
       document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
+          const trigger = e.target.closest('.delete-btn').getAttribute('data-trigger');
+          
           if (confirm('¿Estás seguro de eliminar esta respuesta?')) {
-            const trigger = e.target.getAttribute('data-trigger');
+            toggleLoading(true);
             socket.emit('deleteResponse', trigger);
           }
         });
@@ -170,35 +247,62 @@ function createAdminHtml() {
       const response = responseInput.value.trim();
       
       if (trigger && response) {
+        toggleLoading(true);
         socket.emit('addResponse', { trigger, response });
-        
-        // Limpiar formulario
-        triggerInput.value = '';
-        responseInput.value = '';
       }
+    });
+    
+    // Botón de recarga forzada
+    document.getElementById('reloadBtn').addEventListener('click', () => {
+      toggleLoading(true);
+      socket.emit('forceReload');
+      console.log('Solicitando recarga forzada de respuestas');
+    });
+    
+    // Escuchar evento de actualización de respuestas
+    socket.on('responsesUpdated', () => {
+      console.log('Las respuestas han sido actualizadas, recargando...');
+      socket.emit('getResponses');
     });
     
     // Confirmar acciones
     socket.on('responseAdded', () => {
-      alert('Respuesta guardada correctamente');
+      toggleLoading(false);
+      showToast('Respuesta guardada correctamente');
+      
+      // Limpiar formulario
+      triggerInput.value = '';
+      responseInput.value = '';
+      
+      // Recargar respuestas
       socket.emit('getResponses');
     });
     
     socket.on('responseDeleted', () => {
-      alert('Respuesta eliminada correctamente');
+      toggleLoading(false);
+      showToast('Respuesta eliminada correctamente');
+      
+      // Recargar respuestas
       socket.emit('getResponses');
     });
     
     socket.on('error', (msg) => {
-      alert('Error: ' + msg);
+      toggleLoading(false);
+      showToast(msg, 'error');
+      console.error('Error del servidor:', msg);
     });
+    
+    // Mantener la conexión activa
+    setInterval(() => {
+      socket.emit('ping');
+    }, 30000);
   </script>
 </body>
 </html>`;
 
   // Crear carpeta public si no existe
   if (!fs.existsSync(config.paths.public)) {
-    fs.mkdirSync(config.paths.public);
+    fs.mkdirSync(config.paths.public, { recursive: true });
   }
   
   // Guardar el HTML de administración
