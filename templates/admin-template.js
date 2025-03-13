@@ -1,4 +1,4 @@
-// Plantilla para la página de administración
+// templates/admin-template.js
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
@@ -202,7 +202,7 @@ function createAdminHtml() {
       loadingOverlay.style.display = show ? 'flex' : 'none';
     }
     
-    // Función para mostrar notificaciones
+    // Función para mostrar notificaciones (toast)
     function showToast(message, type = 'success') {
       const toastId = 'toast-' + Date.now();
       const toastHtml = \`
@@ -359,7 +359,7 @@ function createAdminHtml() {
       botChatDiv.scrollTop = botChatDiv.scrollHeight;
     });
     
-    // Enviar mensaje desde el chat al servidor (para que el admin enseñe al bot, por ejemplo)
+    // Enviar mensaje desde el chat al servidor (para que el admin enseñe al bot, o envíe a un usuario)
     sendChatBtn.addEventListener('click', () => {
       const message = chatInput.value.trim();
       if (message) {

@@ -10,33 +10,33 @@ function setupServer() {
   const app = express();
   const server = http.createServer(app);
   const io = socketIo(server);
-  
+
   // Servir archivos estáticos
   app.use(express.static(path.join(__dirname, config.paths.public)));
-  
+
   // Agregar soporte para JSON en las peticiones
   app.use(express.json());
-  
+
   // Crear carpeta public si no existe
   if (!fs.existsSync(config.paths.public)) {
     fs.mkdirSync(config.paths.public, { recursive: true });
     console.log(`Carpeta ${config.paths.public} creada correctamente`);
   }
-  
+
   // Ruta principal
   app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, config.paths.public, config.files.indexHtml));
   });
-  
+
   // Ruta de administración
   app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, config.paths.public, config.files.adminHtml));
   });
-  
+
   // Configurar eventos Socket.IO para administración
   io.on('connection', (socket) => {
     console.log('Cliente web conectado');
-    
+
     // Emitir evento inicial para mostrar que el servidor está activo
     socket.emit('status', {
       sessionName: 'sistema',
@@ -44,7 +44,7 @@ function setupServer() {
       status: 'initializing',
       message: 'Inicializando sistema de WhatsApp Bot'
     });
-    
+
     // Solicitar estado actual de todas las cuentas
     socket.on('requestStatus', () => {
       if (global.whatsappManager) {
@@ -59,43 +59,31 @@ function setupServer() {
         });
       }
     });
-    
+
     // Cerrar sesión de una cuenta
     socket.on('logoutAccount', (sessionName) => {
       try {
         console.log(`Solicitud recibida para cerrar sesión de cuenta: ${sessionName}`);
-        
         if (global.whatsappManager) {
-          // Buscar la cuenta por su sessionName
           const accountIndex = global.whatsappManager.accounts.findIndex(
             account => account.sessionName === sessionName
           );
-          
           if (accountIndex >= 0) {
             const account = global.whatsappManager.accounts[accountIndex];
             console.log(`Cerrando sesión de ${account.phoneNumber}`);
-            
-            // Cerrar sesión de WhatsApp
             if (account.client) {
               account.client.logout()
                 .then(() => {
                   console.log(`Sesión cerrada correctamente para ${account.phoneNumber}`);
                   socket.emit('accountLoggedOut', { sessionName, success: true });
-                  
-                  // Eliminar archivos de sesión si es necesario
                   const sessionDir = `${config.paths.sessions}/${sessionName}`;
                   if (fs.existsSync(sessionDir)) {
                     fs.rmdirSync(sessionDir, { recursive: true });
                     console.log(`Directorio de sesión eliminado: ${sessionDir}`);
                   }
-                  
-                  // Actualizamos el estado de la cuenta
                   if (global.whatsappManager.activeAccount === account) {
-                    // Si era la cuenta activa, cambiar a otra
                     global.whatsappManager.switchToNextAccount();
                   }
-                  
-                  // Emitir estado actualizado
                   global.whatsappManager.emitCurrentStatus();
                 })
                 .catch(err => {
@@ -118,34 +106,27 @@ function setupServer() {
         socket.emit('error', 'Error interno del servidor');
       }
     });
-    
+
     // Agregar nueva cuenta
     socket.on('addAccount', (data) => {
       try {
         console.log(`Solicitud recibida para agregar nueva cuenta: ${data.phoneNumber}`);
-        
         if (!data.phoneNumber) {
           socket.emit('error', 'Número de teléfono no proporcionado');
           return;
         }
-        
         if (global.whatsappManager) {
-          // Verificar que la cuenta no exista ya
           const existingAccount = global.whatsappManager.accounts.find(
             account => account.phoneNumber === data.phoneNumber
           );
-          
           if (existingAccount) {
             socket.emit('error', 'Este número ya está registrado');
             return;
           }
-          
-          // Agregar la nueva cuenta
           const index = global.whatsappManager.addAccount(
             data.phoneNumber, 
             data.sessionName || `cuenta_${Date.now()}`
           );
-          
           console.log(`Nueva cuenta agregada: ${data.phoneNumber} (índice: ${index})`);
           socket.emit('accountAdded', { 
             phoneNumber: data.phoneNumber, 
@@ -161,22 +142,18 @@ function setupServer() {
         socket.emit('error', 'Error interno del servidor');
       }
     });
-    
+
     // Obtener todas las respuestas
     socket.on('getResponses', () => {
       try {
         console.log('Solicitud recibida para obtener respuestas');
-        
         if (global.whatsappManager) {
-          // Usar el método de WhatsAppManager para obtener respuestas
           const responses = global.whatsappManager.getAllResponses();
           console.log(`Enviando ${Object.keys(responses).length} respuestas al cliente`);
           socket.emit('responsesList', responses);
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('error', 'El gestor de WhatsApp aún no está inicializado');
-          
-          // Fallback: cargar respuestas directamente del archivo
           if (fs.existsSync(config.files.learningData)) {
             try {
               const data = fs.readFileSync(config.files.learningData, 'utf8');
@@ -197,21 +174,17 @@ function setupServer() {
         socket.emit('error', 'No se pudieron cargar las respuestas: ' + err.message);
       }
     });
-    
+
     // Agregar nueva respuesta
     socket.on('addResponse', ({ trigger, response }) => {
       try {
         console.log(`Intentando guardar respuesta: "${trigger}" -> "${response}"`);
-        
         if (!trigger || !response) {
           socket.emit('error', 'La pregunta y respuesta no pueden estar vacías');
           return;
         }
-        
         if (global.whatsappManager) {
-          // Usar el método de WhatsAppManager para actualizar respuesta
           const success = global.whatsappManager.updateResponse(trigger, response);
-          
           if (success) {
             console.log(`Respuesta agregada: "${trigger}" -> "${response}"`);
             socket.emit('responseAdded');
@@ -222,11 +195,8 @@ function setupServer() {
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('error', 'Gestor de WhatsApp no inicializado');
-          
-          // Fallback: guardar directamente en el archivo
           try {
             let learningData = { responses: {} };
-            
             if (fs.existsSync(config.files.learningData)) {
               const data = fs.readFileSync(config.files.learningData, 'utf8');
               learningData = JSON.parse(data);
@@ -234,10 +204,8 @@ function setupServer() {
                 learningData.responses = {};
               }
             }
-            
             learningData.responses[trigger.toLowerCase()] = response;
             fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
-            
             socket.emit('responseAdded');
             io.emit('responsesUpdated');
           } catch (fileError) {
@@ -252,16 +220,13 @@ function setupServer() {
         socket.emit('error', 'No se pudo guardar la respuesta: ' + err.message);
       }
     });
-    
+
     // Eliminar respuesta
     socket.on('deleteResponse', (trigger) => {
       try {
         console.log(`Intentando eliminar respuesta: "${trigger}"`);
-        
         if (global.whatsappManager) {
-          // Usar el método de WhatsAppManager para eliminar respuesta
           const success = global.whatsappManager.deleteResponse(trigger);
-          
           if (success) {
             console.log(`Respuesta eliminada: "${trigger}"`);
             socket.emit('responseDeleted');
@@ -272,17 +237,13 @@ function setupServer() {
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('error', 'Gestor de WhatsApp no inicializado');
-          
-          // Fallback: eliminar directamente del archivo
           try {
             if (fs.existsSync(config.files.learningData)) {
               const data = fs.readFileSync(config.files.learningData, 'utf8');
               const learningData = JSON.parse(data);
-              
               if (learningData.responses && learningData.responses[trigger]) {
                 delete learningData.responses[trigger];
                 fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
-                
                 socket.emit('responseDeleted');
                 io.emit('responsesUpdated');
               } else {
@@ -303,14 +264,12 @@ function setupServer() {
         socket.emit('error', 'No se pudo eliminar la respuesta: ' + err.message);
       }
     });
-    
+
     // Forzar recarga de respuestas
     socket.on('forceReload', () => {
       try {
         console.log('Solicitando recarga forzada de respuestas');
-        
         if (global.whatsappManager) {
-          // Usar el método de WhatsAppManager para recargar datos
           const success = global.whatsappManager.reloadLearningData();
           if (success) {
             const responses = global.whatsappManager.getAllResponses();
@@ -336,7 +295,7 @@ function setupServer() {
         socket.emit('error', 'Error al recargar respuestas: ' + err.message);
       }
     });
-    
+
     // Evento para agregar respuesta rápida
     socket.on('addQuickResponse', ({ trigger, response }) => {
       try {
@@ -358,20 +317,34 @@ function setupServer() {
         socket.emit('error', 'No se pudo agregar la respuesta rápida: ' + err.message);
       }
     });
+
+    // Evento para mensajes enviados desde el panel por el administrador
+    socket.on('adminChatMessage', (msg) => {
+      console.log('Mensaje del admin:', msg);
+      io.emit('botChatMessage', {
+        from: 'ADMIN',
+        message: msg
+      });
+      // Aquí podrías enviar el mensaje a un usuario real si lo deseas
+      /*
+      if (global.whatsappManager && global.whatsappManager.activeAccount && global.whatsappManager.activeAccount.client) {
+        global.whatsappManager.activeAccount.client.sendMessage('521234567890@c.us', msg);
+      }
+      */
+    });
     
     // Evento de ping para mantener viva la conexión
     socket.on('ping', () => {
       // Este evento simplemente mantiene la conexión activa
     });
   });
-  
+
   // Puerto para Railway o local
   const PORT = config.server.port;
-  
   server.listen(PORT, () => {
     console.log(`Servidor web iniciado en el puerto ${PORT}`);
   });
-  
+
   return { app, server, io };
 }
 
