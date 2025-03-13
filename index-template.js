@@ -1,4 +1,10 @@
-<!DOCTYPE html>
+// Plantilla para la página principal
+const path = require('path');
+const fs = require('fs');
+const config = require('../config');
+
+function createIndexHtml() {
+  const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -323,35 +329,35 @@
         accountElement = document.createElement('div');
         accountElement.id = 'account-' + data.sessionName;
         accountElement.className = 'col-md-6 mb-4';
-        accountElement.innerHTML = `
-          <div class="qr-container ${accounts[data.sessionName].active ? 'active' : ''}">
+        accountElement.innerHTML = \`
+          <div class="qr-container \${accounts[data.sessionName].active ? 'active' : ''}">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <div class="phone-number">
-                ${data.phoneNumber || data.sessionName}
-                ${accounts[data.sessionName].active ? '<span class="active-badge">ACTIVA</span>' : ''}
+                \${data.phoneNumber || data.sessionName}
+                \${accounts[data.sessionName].active ? '<span class="active-badge">ACTIVA</span>' : ''}
               </div>
             </div>
-            <div id="status-${data.sessionName}" class="mb-3">
+            <div id="status-\${data.sessionName}" class="mb-3">
               <span class="status-indicator status-waiting"></span>
               <span class="status-text">Esperando escaneo...</span>
             </div>
-            <div id="qr-${data.sessionName}" class="mt-3">
-              <img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">
+            <div id="qr-\${data.sessionName}" class="mt-3">
+              <img src="\${data.qrDataUrl}" alt="Código QR" class="img-fluid">
             </div>
           </div>
-        `;
+        \`;
         accountsContainer.appendChild(accountElement);
       } else {
         // Actualizar QR existente
         const qrElement = document.getElementById('qr-' + data.sessionName);
-        qrElement.innerHTML = `<img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">`;
+        qrElement.innerHTML = \`<img src="\${data.qrDataUrl}" alt="Código QR" class="img-fluid">\`;
         
         // Actualizar estado
         const statusElement = document.getElementById('status-' + data.sessionName);
-        statusElement.innerHTML = `
+        statusElement.innerHTML = \`
           <span class="status-indicator status-waiting"></span>
           <span class="status-text">Esperando escaneo...</span>
-        `;
+        \`;
         
         // Actualizar badge de activo
         const container = accountElement.querySelector('.qr-container');
@@ -406,23 +412,23 @@
         accountElement = document.createElement('div');
         accountElement.id = 'account-' + data.sessionName;
         accountElement.className = 'col-md-6 mb-4';
-        accountElement.innerHTML = `
-          <div class="qr-container ${data.active ? 'active' : ''}">
+        accountElement.innerHTML = \`
+          <div class="qr-container \${data.active ? 'active' : ''}">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <div class="phone-number">
-                ${data.phoneNumber || data.sessionName}
-                ${data.active ? '<span class="active-badge">ACTIVA</span>' : ''}
+                \${data.phoneNumber || data.sessionName}
+                \${data.active ? '<span class="active-badge">ACTIVA</span>' : ''}
               </div>
             </div>
-            <div id="status-${data.sessionName}" class="mb-3">
+            <div id="status-\${data.sessionName}" class="mb-3">
               <span class="status-indicator status-waiting"></span>
               <span class="status-text">Inicializando...</span>
             </div>
-            <div id="qr-${data.sessionName}" class="mt-3">
+            <div id="qr-\${data.sessionName}" class="mt-3">
               <p>Esperando información de conexión...</p>
             </div>
           </div>
-        `;
+        \`;
         accountsContainer.appendChild(accountElement);
       }
       
@@ -463,20 +469,20 @@
               statusText = data.status;
           }
           
-          statusElement.innerHTML = `
-            <span class="status-indicator ${statusClass}"></span>
-            <span class="status-text">${statusText}</span>
-          `;
+          statusElement.innerHTML = \`
+            <span class="status-indicator \${statusClass}"></span>
+            <span class="status-text">\${statusText}</span>
+          \`;
         }
         
         // Actualizar si es activa
         if (data.active) {
           container.classList.add('active');
           if (!phoneNumberEl.querySelector('.active-badge')) {
-            phoneNumberEl.innerHTML = `
-              ${data.phoneNumber || data.sessionName}
+            phoneNumberEl.innerHTML = \`
+              \${data.phoneNumber || data.sessionName}
               <span class="active-badge">ACTIVA</span>
-            `;
+            \`;
           }
         } else {
           container.classList.remove('active');
@@ -506,13 +512,13 @@
       
       const statusUpdate = document.createElement('div');
       statusUpdate.className = 'status-entry';
-      statusUpdate.innerHTML = `
-        <p class="${statusClass}">
-          <i class="bi bi-${icon}-fill me-2"></i>
-          <small>${now}</small> - <strong>${data.phoneNumber || data.sessionName}</strong>: 
-          ${data.status}${data.active ? ' <span class="badge bg-success">ACTIVA</span>' : ''}
+      statusUpdate.innerHTML = \`
+        <p class="\${statusClass}">
+          <i class="bi bi-\${icon}-fill me-2"></i>
+          <small>\${now}</small> - <strong>\${data.phoneNumber || data.sessionName}</strong>: 
+          \${data.status}\${data.active ? ' <span class="badge bg-success">ACTIVA</span>' : ''}
         </p>
-      `;
+      \`;
       
       // Limpiar el mensaje de "Esperando información" si es la primera actualización
       if (statusContainer.querySelector('.text-muted')) {
@@ -536,3 +542,16 @@
   </script>
 </body>
 </html>
+  `;
+  
+  // Crear carpeta public si no existe
+  if (!fs.existsSync(config.paths.public)) {
+    fs.mkdirSync(config.paths.public);
+  }
+  
+  // Guardar el HTML
+  fs.writeFileSync(path.join(config.paths.public, config.files.indexHtml), htmlContent);
+  console.log('Archivo HTML creado correctamente');
+}
+
+module.exports = createIndexHtml;
