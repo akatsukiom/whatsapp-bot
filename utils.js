@@ -1,5 +1,6 @@
 // Funciones auxiliares para el sistema
 const fs = require('fs');
+const path = require('path');
 const config = require('./config');
 
 /**
@@ -17,18 +18,60 @@ function ensureDirectories() {
     fs.mkdirSync(config.paths.sessions, { recursive: true });
     console.log(`Carpeta ${config.paths.sessions} creada correctamente`);
   }
+  
+  // Crear carpeta para archivos de datos si está en una ruta diferente
+  if (config.paths.learningData) {
+    const learningDataDir = path.dirname(config.paths.learningData);
+    if (!fs.existsSync(learningDataDir)) {
+      fs.mkdirSync(learningDataDir, { recursive: true });
+      console.log(`Carpeta ${learningDataDir} creada correctamente`);
+    }
+  }
 }
 
 /**
  * Crea el archivo learning-data.json inicial si no existe
  */
 function createLearningDataFile() {
-  if (!fs.existsSync(config.files.learningData)) {
-    fs.writeFileSync(config.files.learningData, JSON.stringify(config.initialLearningData, null, 2));
-    console.log(`Archivo ${config.files.learningData} creado correctamente`);
-    return true;
+  const filePath = config.paths.learningData || config.files.learningData;
+  
+  if (!fs.existsSync(filePath)) {
+    try {
+      // Asegurar que el directorio existe
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      fs.writeFileSync(filePath, JSON.stringify(config.initialLearningData, null, 2));
+      log(`Archivo ${filePath} creado correctamente`, 'success');
+      return true;
+    } catch (error) {
+      log(`Error al crear ${filePath}: ${error.message}`, 'error');
+      return false;
+    }
   }
   return false;
+}
+
+/**
+ * Verifica permisos de archivos críticos
+ */
+function checkFilePermissions() {
+  try {
+    const filePath = config.paths.learningData || config.files.learningData;
+    
+    // Intentar escribir en un archivo temporal para verificar permisos
+    const testFile = `${filePath}.test`;
+    fs.writeFileSync(testFile, 'test');
+    fs.unlinkSync(testFile);
+    
+    log('Permisos de escritura verificados correctamente', 'success');
+    return true;
+  } catch (error) {
+    log(`Error al verificar permisos: ${error.message}`, 'error');
+    return false;
+  }
 }
 
 /**
@@ -37,10 +80,20 @@ function createLearningDataFile() {
  */
 function saveLearningData(data) {
   try {
-    fs.writeFileSync(config.files.learningData, JSON.stringify(data, null, 2));
+    const filePath = config.paths.learningData || config.files.learningData;
+    
+    // Asegurar que el directorio existe
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    const jsonData = JSON.stringify(data, null, 2);
+    fs.writeFileSync(filePath, jsonData);
+    log(`Datos de aprendizaje guardados correctamente (${jsonData.length} bytes)`, 'success');
     return true;
   } catch (error) {
-    console.error('Error al guardar datos de aprendizaje:', error);
+    log(`Error al guardar datos de aprendizaje: ${error.message}`, 'error');
     return false;
   }
 }
@@ -51,13 +104,43 @@ function saveLearningData(data) {
  */
 function loadLearningData() {
   try {
-    if (fs.existsSync(config.files.learningData)) {
-      const data = fs.readFileSync(config.files.learningData, 'utf8');
-      return JSON.parse(data);
+    const filePath = config.paths.learningData || config.files.learningData;
+    log(`Intentando cargar datos de aprendizaje desde: ${filePath}`, 'info');
+    
+    if (!fs.existsSync(filePath)) {
+      log(`Archivo ${filePath} no encontrado, se creará una base de datos inicial`, 'warning');
+      return null;
     }
-    return null;
+    
+    const data = fs.readFileSync(filePath, 'utf8');
+    
+    if (!data || data.trim() === '') {
+      log('Archivo vacío, se utilizarán datos por defecto', 'warning');
+      return null;
+    }
+    
+    try {
+      const parsedData = JSON.parse(data);
+      
+      // Verificar estructura correcta
+      if (!parsedData.responses) {
+        log('Los datos cargados no contienen la propiedad "responses"', 'warning');
+        parsedData.responses = config.initialLearningData.responses;
+      }
+      
+      if (!parsedData.mediaHandlers) {
+        log('Los datos cargados no contienen la propiedad "mediaHandlers"', 'warning');
+        parsedData.mediaHandlers = config.initialLearningData.mediaHandlers;
+      }
+      
+      log(`Datos de aprendizaje cargados con ${Object.keys(parsedData.responses).length} respuestas`, 'success');
+      return parsedData;
+    } catch (parseError) {
+      log(`Error al analizar JSON: ${parseError.message}`, 'error');
+      return null;
+    }
   } catch (error) {
-    console.error('Error al cargar datos de aprendizaje:', error);
+    log(`Error al cargar datos de aprendizaje: ${error.message}`, 'error');
     return null;
   }
 }
@@ -121,12 +204,73 @@ function log(message, type = 'info') {
   }
 }
 
+/**
+ * Crea una copia de seguridad del archivo de aprendizaje
+ */
+function backupLearningData() {
+  try {
+    const filePath = config.paths.learningData || config.files.learningData;
+    
+    if (!fs.existsSync(filePath)) {
+      log(`No se puede crear copia de seguridad, el archivo ${filePath} no existe`, 'warning');
+      return false;
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = `${filePath}.${timestamp}.bak`;
+    
+    fs.copyFileSync(filePath, backupPath);
+    log(`Copia de seguridad creada: ${backupPath}`, 'success');
+    return true;
+  } catch (error) {
+    log(`Error al crear copia de seguridad: ${error.message}`, 'error');
+    return false;
+  }
+}
+
+/**
+ * Asegura que un objeto tiene la estructura correcta para el bot
+ * @param {Object} data - Objeto a verificar
+ * @returns {Object} - Objeto con estructura validada
+ */
+function ensureValidDataStructure(data) {
+  const validatedData = { ...data };
+  
+  if (!validatedData.responses || typeof validatedData.responses !== 'object') {
+    log('Estructura de datos inválida: "responses" no es un objeto', 'warning');
+    validatedData.responses = { ...config.initialLearningData.responses };
+  }
+  
+  if (!validatedData.mediaHandlers || typeof validatedData.mediaHandlers !== 'object') {
+    log('Estructura de datos inválida: "mediaHandlers" no es un objeto', 'warning');
+    validatedData.mediaHandlers = { ...config.initialLearningData.mediaHandlers };
+  }
+  
+  return validatedData;
+}
+
+/**
+ * Sanitiza un mensaje para evitar inyección de comandos
+ * @param {string} message - Mensaje a sanitizar
+ * @returns {string} - Mensaje sanitizado
+ */
+function sanitizeMessage(message) {
+  if (!message) return '';
+  
+  // Remover comandos potenciales
+  return message.replace(/!(switch|learn|status|pendientes|responder)/g, '\\$1');
+}
+
 module.exports = {
   ensureDirectories,
   createLearningDataFile,
+  checkFilePermissions,
   saveLearningData,
   loadLearningData,
   isGroupChat,
   isAdminNumber,
-  log
+  log,
+  backupLearningData,
+  ensureValidDataStructure,
+  sanitizeMessage
 };

@@ -11,10 +11,36 @@ async function main() {
   // Verificar directorios necesarios
   utils.ensureDirectories();
   
+  // Verificar permisos de escritura en archivos clave
+  function checkFilePermissions() {
+    const fs = require('fs');
+    try {
+      // Verificar learning-data.json
+      const learningDataPath = config.paths.learningData || config.files.learningData;
+      
+      // Intentar escribir en un archivo temporal para verificar permisos
+      const testFile = `${learningDataPath}.test`;
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      
+      utils.log('Permisos de escritura verificados correctamente', 'success');
+      return true;
+    } catch (error) {
+      utils.log(`Error al verificar permisos: ${error.message}`, 'error');
+      return false;
+    }
+  }
+  
+  // Comprobar permisos
+  checkFilePermissions();
+  
   // Crear archivos necesarios
   createIndexHtml();
   createAdminHtml();
   utils.createLearningDataFile();
+  
+  // Crear una copia de seguridad antes de iniciar (si existe el archivo)
+  utils.backupLearningData();
   
   // Configurar servidor
   utils.log('Configurando servidor web...', 'info');

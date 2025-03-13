@@ -2,7 +2,9 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const fs = require('fs');
+const path = require('path');
 const config = require('./config');
+const utils = require('./utils');
 
 class WhatsAppManager {
   constructor(io) {
@@ -22,11 +24,49 @@ class WhatsAppManager {
   // Cargar datos de aprendizaje previos
   loadLearningData() {
     try {
-      const data = fs.readFileSync(config.files.learningData, 'utf8');
-      this.learningDatabase = JSON.parse(data);
-      console.log('Datos de aprendizaje cargados correctamente');
+      const filePath = config.paths.learningData || config.files.learningData;
+      utils.log(`Intentando cargar datos de aprendizaje desde: ${filePath}`, 'info');
+      
+      if (!fs.existsSync(filePath)) {
+        utils.log(`Archivo ${filePath} no encontrado, creando base de datos inicial`, 'warning');
+        this.learningDatabase = config.initialLearningData;
+        this.saveLearningData();
+        return;
+      }
+      
+      const data = fs.readFileSync(filePath, 'utf8');
+      utils.log(`Contenido del archivo leído: ${data.substring(0, 100)}...`, 'info');
+      
+      if (!data || data.trim() === '') {
+        utils.log('Archivo vacío, inicializando con datos por defecto', 'warning');
+        this.learningDatabase = config.initialLearningData;
+        this.saveLearningData();
+        return;
+      }
+      
+      try {
+        this.learningDatabase = JSON.parse(data);
+        utils.log(`Datos de aprendizaje cargados correctamente con ${Object.keys(this.learningDatabase.responses || {}).length} respuestas`, 'success');
+        
+        // Verificar que tenga la estructura correcta
+        if (!this.learningDatabase.responses) {
+          utils.log('La estructura de datos no contiene "responses", inicializando', 'warning');
+          this.learningDatabase.responses = config.initialLearningData.responses;
+        }
+        
+        if (!this.learningDatabase.mediaHandlers) {
+          utils.log('La estructura de datos no contiene "mediaHandlers", inicializando', 'warning');
+          this.learningDatabase.mediaHandlers = config.initialLearningData.mediaHandlers;
+        }
+      } catch (parseError) {
+        utils.log(`Error al analizar JSON: ${parseError.message}`, 'error');
+        utils.log('Inicializando con datos por defecto debido al error de análisis', 'warning');
+        this.learningDatabase = config.initialLearningData;
+        this.saveLearningData();
+      }
     } catch (err) {
-      console.log('No se encontraron datos de aprendizaje previos, creando nueva base de datos');
+      utils.log(`Error al cargar datos de aprendizaje: ${err.message}`, 'error');
+      utils.log('Inicializando con datos por defecto debido al error de lectura', 'warning');
       this.learningDatabase = config.initialLearningData;
       this.saveLearningData();
     }
@@ -34,8 +74,24 @@ class WhatsAppManager {
   
   // Guardar datos de aprendizaje
   saveLearningData() {
-    fs.writeFileSync(config.files.learningData, JSON.stringify(this.learningDatabase, null, 2));
-    console.log('Datos de aprendizaje guardados correctamente');
+    try {
+      const filePath = config.paths.learningData || config.files.learningData;
+      utils.log(`Guardando datos de aprendizaje en: ${filePath}`, 'info');
+      
+      // Asegurar que el directorio existe
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      const jsonData = JSON.stringify(this.learningDatabase, null, 2);
+      fs.writeFileSync(filePath, jsonData);
+      utils.log(`Datos de aprendizaje guardados correctamente (${jsonData.length} bytes)`, 'success');
+      return true;
+    } catch (error) {
+      utils.log(`Error al guardar datos de aprendizaje: ${error.message}`, 'error');
+      return false;
+    }
   }
   
   // Función para calcular la distancia de Levenshtein (cuánto se parecen dos palabras)
@@ -129,7 +185,7 @@ class WhatsAppManager {
           }
         }
       } catch (error) {
-        console.error(`Error al obtener estado de ${account.phoneNumber}:`, error.message);
+        utils.log(`Error al obtener estado de ${account.phoneNumber}: ${error.message}`, 'error');
       }
       
       this.io.emit('status', {
@@ -157,12 +213,12 @@ class WhatsAppManager {
     
     // Configurar eventos
     client.on('qr', (qr) => {
-      console.log(`QR Code generado para la cuenta ${phoneNumber}`);
+      utils.log(`QR Code generado para la cuenta ${phoneNumber}`, 'info');
       
       // Convertir QR a imagen y enviarlo al cliente web
       qrcode.toDataURL(qr, (err, url) => {
         if (err) {
-          console.error('Error al generar QR:', err);
+          utils.log(`Error al generar QR: ${err.message}`, 'error');
           return;
         }
         
@@ -178,14 +234,14 @@ class WhatsAppManager {
           type: 'png',
           margin: 2,
         }, (err) => {
-          if (err) console.error('Error al guardar QR como archivo:', err);
-          else console.log(`QR guardado como qr-${sessionName}.png`);
+          if (err) utils.log(`Error al guardar QR como archivo: ${err.message}`, 'error');
+          else utils.log(`QR guardado como qr-${sessionName}.png`, 'success');
         });
       });
     });
     
     client.on('ready', () => {
-      console.log(`Cliente ${phoneNumber} está listo!`);
+      utils.log(`Cliente ${phoneNumber} está listo!`, 'success');
       this.io.emit('status', {
         sessionName,
         phoneNumber,
@@ -195,7 +251,7 @@ class WhatsAppManager {
     });
     
     client.on('authenticated', () => {
-      console.log(`Cliente ${phoneNumber} autenticado correctamente`);
+      utils.log(`Cliente ${phoneNumber} autenticado correctamente`, 'success');
       this.io.emit('status', {
         sessionName,
         phoneNumber,
@@ -216,7 +272,7 @@ class WhatsAppManager {
     });
     
     client.on('disconnected', (reason) => {
-      console.log(`Cliente ${phoneNumber} desconectado:`, reason);
+      utils.log(`Cliente ${phoneNumber} desconectado: ${reason}`, 'warning');
       this.io.emit('status', {
         sessionName,
         phoneNumber,
@@ -227,19 +283,22 @@ class WhatsAppManager {
       
       // Si se desconecta por baneo, cambiamos de cuenta
       if (reason.includes('banned') || reason.includes('timeout')) {
-        console.log(`La cuenta ${phoneNumber} parece estar baneada, cambiando a otra cuenta...`);
+        utils.log(`La cuenta ${phoneNumber} parece estar baneada, cambiando a otra cuenta...`, 'warning');
         this.switchToNextAccount();
       }
       
       // Reiniciar el cliente después de la desconexión
-      client.initialize().catch(err => {
-        console.error(`Error al reinicializar cliente ${phoneNumber}:`, err);
-      });
+      setTimeout(() => {
+        utils.log(`Intentando reconectar cliente ${phoneNumber}...`, 'info');
+        client.initialize().catch(err => {
+          utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
+        });
+      }, 10000); // Esperar 10 segundos antes de intentar reconectar
     });
     
     // Inicializamos el cliente
     client.initialize().catch(err => {
-      console.error(`Error al inicializar cliente ${phoneNumber}:`, err);
+      utils.log(`Error al inicializar cliente ${phoneNumber}: ${err.message}`, 'error');
     });
     
     // Agregamos la cuenta a nuestra lista
@@ -281,7 +340,7 @@ class WhatsAppManager {
       // Cerrar sesión de WhatsApp
       if (account.client) {
         await account.client.logout();
-        console.log(`Sesión cerrada para ${account.phoneNumber}`);
+        utils.log(`Sesión cerrada para ${account.phoneNumber}`, 'success');
         
         // Si era la cuenta activa, cambiar a otra
         if (this.activeAccount === account) {
@@ -302,7 +361,7 @@ class WhatsAppManager {
         throw new Error('Cliente no inicializado');
       }
     } catch (error) {
-      console.error(`Error en logoutAccount: ${error.message}`);
+      utils.log(`Error en logoutAccount: ${error.message}`, 'error');
       throw error;
     }
   }
@@ -355,7 +414,7 @@ class WhatsAppManager {
         // Informar que se ha guardado en la base de conocimientos
         client.sendMessage(message.from, `📝 La respuesta también se ha guardado en la base de conocimientos.`);
       } catch (error) {
-        console.error('Error al enviar respuesta:', error);
+        utils.log(`Error al enviar respuesta: ${error.message}`, 'error');
         client.sendMessage(message.from, `❌ Error al enviar respuesta: ${error.message}`);
       }
       
@@ -442,11 +501,11 @@ class WhatsAppManager {
   
   // Manejar mensajes entrantes
   async handleIncomingMessage(message, client) {
-    console.log(`Mensaje recibido: ${message.body}`);
+    utils.log(`Mensaje recibido: ${message.body} de ${message.from}`, 'info');
     
     // Verificar si es un mensaje de un chat privado o de un grupo
-    // Los IDs de chats de grupo en WhatsApp terminan con "@g.us"
     const isGroup = message.from.endsWith('@g.us');
+    utils.log(`Es mensaje de grupo: ${isGroup}`, 'info');
     
     // Si es un mensaje multimedia
     if (message.hasMedia) {
@@ -454,24 +513,28 @@ class WhatsAppManager {
       return;
     }
     
-    // Si es un mensaje privado (no de grupo), redirigir al número correcto
+    // Solo redirigir mensajes privados si no es grupo
     if (!isGroup) {
-      client.sendMessage(message.from, config.whatsapp.redirectMessage);
+      utils.log('Enviando mensaje de redirección (chat privado)', 'info');
+      await client.sendMessage(message.from, config.whatsapp.redirectMessage);
       return;
     }
     
-    // Si es un mensaje de grupo, buscar respuesta en la base de datos de aprendizaje
+    // Procesar mensaje de grupo
+    utils.log('Procesando mensaje de grupo...', 'info');
     const messageText = message.body.toLowerCase();
     let response = null;
     
     // Buscar coincidencia exacta
     if (this.learningDatabase.responses[messageText]) {
+      utils.log(`Coincidencia exacta encontrada para: "${messageText}"`, 'success');
       response = this.learningDatabase.responses[messageText];
     } else {
       // Buscar coincidencia parcial
       let foundPartialMatch = false;
       for (const key in this.learningDatabase.responses) {
         if (messageText.includes(key)) {
+          utils.log(`Coincidencia parcial encontrada: "${messageText}" incluye "${key}"`, 'success');
           response = this.learningDatabase.responses[key];
           foundPartialMatch = true;
           break;
@@ -480,58 +543,80 @@ class WhatsAppManager {
       
       // Si no se encontró coincidencia parcial, buscar similar con Levenshtein
       if (!foundPartialMatch) {
+        utils.log('Buscando coincidencia por similitud...', 'info');
         const mostSimilarKey = this.findMostSimilarKey(messageText);
         if (mostSimilarKey) {
+          utils.log(`Coincidencia similar encontrada: "${messageText}" -> "${mostSimilarKey}"`, 'success');
           response = this.learningDatabase.responses[mostSimilarKey];
-          // Registrar en el log cuando se usa una coincidencia similar
-          console.log(`Coincidencia similar encontrada: "${messageText}" -> "${mostSimilarKey}"`);
         }
       }
     }
     
     // Si encontramos una respuesta, la enviamos
     if (response) {
-      client.sendMessage(message.from, response);
+      utils.log(`Enviando respuesta: "${response}"`, 'info');
+      try {
+        // Asegurarse de que el cliente esté activo y usar la cuenta activa
+        const clientToUse = this.activeAccount ? this.activeAccount.client : client;
+        await clientToUse.sendMessage(message.from, response);
+        utils.log('Respuesta enviada exitosamente', 'success');
+      } catch (error) {
+        utils.log(`Error al enviar respuesta: ${error.message}`, 'error');
+        // Intentar con la cuenta original si falló con la activa
+        if (client !== this.activeAccount?.client) {
+          try {
+            utils.log('Intentando enviar con el cliente original...', 'info');
+            await client.sendMessage(message.from, response);
+            utils.log('Respuesta enviada con cliente original', 'success');
+          } catch (secondError) {
+            utils.log(`Error al enviar con cliente original: ${secondError.message}`, 'error');
+          }
+        }
+      }
     } else {
       // Si no tenemos una respuesta, reenviar al administrador
-      try {
-        // Guardamos temporalmente el chat que requiere respuesta para poder responder después
-        // Formato: { chatId: string, message: string, timestamp: Date }
-        if (!this.pendingResponses) {
-          this.pendingResponses = {};
-        }
-        
-        const timestamp = new Date();
-        const messageId = `${message.from}_${timestamp.getTime()}`;
-        
-        this.pendingResponses[messageId] = {
-          chatId: message.from,
-          message: message.body,
-          timestamp: timestamp,
-          contact: message._data.notifyName || "Usuario" // Nombre del contacto si está disponible
-        };
-        
-        // Reenviar al administrador (podemos enviar a todos los administradores configurados)
-        for (const adminNumber of config.whatsapp.adminNumbers) {
-          // Agregamos un ID único para poder identificar a qué mensaje responde el admin
-          await client.sendMessage(adminNumber, 
-            `⚠️ *MENSAJE SIN RESPUESTA* ⚠️\n\n` +
-            `*De:* ${this.pendingResponses[messageId].contact} (${message.from})\n` +
-            `*Grupo:* ${isGroup ? 'Sí' : 'No'}\n` +
-            `*Mensaje:* ${message.body}\n\n` +
-            `Para responder, escribe:\n` +
-            `!responder ${messageId} | Tu respuesta aquí`
-          );
-        }
-        
-        // Opcional: Enviar un mensaje al usuario indicando que su mensaje está siendo procesado
-        // client.sendMessage(message.from, "Estamos procesando tu consulta, en breve te responderemos.");
-        
-        // Limpiar mensajes pendientes antiguos (más de 24 horas)
-        this.cleanOldPendingResponses();
-      } catch (error) {
-        console.error('Error al reenviar mensaje al administrador:', error);
+      utils.log('No se encontró respuesta, reenviando al administrador', 'info');
+      this.forwardToAdmin(message, client, isGroup);
+    }
+  }
+  
+  // Reenviar mensaje al administrador
+  async forwardToAdmin(message, client, isGroup) {
+    try {
+      // Guardamos temporalmente el chat que requiere respuesta
+      if (!this.pendingResponses) {
+        this.pendingResponses = {};
       }
+      
+      const timestamp = new Date();
+      const messageId = `${message.from}_${timestamp.getTime()}`;
+      
+      this.pendingResponses[messageId] = {
+        chatId: message.from,
+        message: message.body,
+        timestamp: timestamp,
+        contact: message._data.notifyName || message.author || "Usuario"
+      };
+      
+      // Reenviar a todos los administradores configurados
+      for (const adminNumber of config.whatsapp.adminNumbers) {
+        utils.log(`Reenviando mensaje a administrador ${adminNumber}`, 'info');
+        // Agregamos un ID único para poder identificar a qué mensaje responde el admin
+        await client.sendMessage(adminNumber, 
+          `⚠️ *MENSAJE SIN RESPUESTA* ⚠️\n\n` +
+          `*De:* ${this.pendingResponses[messageId].contact}\n` +
+          `*Chat:* ${message.from}\n` +
+          `*Grupo:* ${isGroup ? 'Sí' : 'No'}\n` +
+          `*Mensaje:* ${message.body}\n\n` +
+          `Para responder, escribe:\n` +
+          `!responder ${messageId} | Tu respuesta aquí`
+        );
+      }
+      
+      // Limpiar mensajes pendientes antiguos
+      this.cleanOldPendingResponses();
+    } catch (error) {
+      utils.log(`Error al reenviar mensaje al administrador: ${error.message}`, 'error');
     }
   }
   
@@ -556,7 +641,7 @@ class WhatsAppManager {
     });
     
     if (oldResponseIds.length > 0) {
-      console.log(`Se eliminaron ${oldResponseIds.length} mensajes pendientes antiguos`);
+      utils.log(`Se eliminaron ${oldResponseIds.length} mensajes pendientes antiguos`, 'info');
     }
   }
   
@@ -572,7 +657,7 @@ class WhatsAppManager {
       // Aquí se podría implementar un análisis más sofisticado de los archivos
       // Por ejemplo, usando OCR para imágenes, o transcripción para audio
     } catch (error) {
-      console.error('Error al manejar mensaje multimedia:', error);
+      utils.log(`Error al manejar mensaje multimedia: ${error.message}`, 'error');
       client.sendMessage(message.from, "Lo siento, no pude procesar ese archivo multimedia.");
     }
   }
@@ -580,7 +665,7 @@ class WhatsAppManager {
   // Cambiar a una cuenta específica
   switchToAccount(index) {
     if (index < 0 || index >= this.accounts.length) {
-      console.error('Índice de cuenta inválido');
+      utils.log('Índice de cuenta inválido', 'error');
       return false;
     }
     
@@ -602,7 +687,7 @@ class WhatsAppManager {
           active: false
         });
       } catch (error) {
-        console.error('Error al emitir estado de cuenta desactivada:', error.message);
+        utils.log(`Error al emitir estado de cuenta desactivada: ${error.message}`, 'error');
       }
     }
     
@@ -624,10 +709,10 @@ class WhatsAppManager {
         active: true
       });
     } catch (error) {
-      console.error('Error al emitir estado de cuenta activada:', error.message);
+      utils.log(`Error al emitir estado de cuenta activada: ${error.message}`, 'error');
     }
     
-    console.log(`Cambiado a la cuenta ${this.activeAccount.phoneNumber}`);
+    utils.log(`Cambiado a la cuenta ${this.activeAccount.phoneNumber}`, 'success');
     return true;
   }
   
@@ -645,7 +730,7 @@ class WhatsAppManager {
       }
     }
     
-    console.error('No hay cuentas disponibles sin baneo');
+    utils.log('No hay cuentas disponibles sin baneo', 'error');
     return false;
   }
 }
