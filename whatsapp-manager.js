@@ -268,6 +268,45 @@ class WhatsAppManager {
     return this.accounts.length - 1; // Devolvemos el índice de la cuenta
   }
   
+  // Cerrar sesión de WhatsApp y eliminar archivos de sesión
+  async logoutAccount(sessionName) {
+    try {
+      const accountIndex = this.accounts.findIndex(acc => acc.sessionName === sessionName);
+      if (accountIndex < 0) {
+        throw new Error(`Cuenta no encontrada: ${sessionName}`);
+      }
+      
+      const account = this.accounts[accountIndex];
+      
+      // Cerrar sesión de WhatsApp
+      if (account.client) {
+        await account.client.logout();
+        console.log(`Sesión cerrada para ${account.phoneNumber}`);
+        
+        // Si era la cuenta activa, cambiar a otra
+        if (this.activeAccount === account) {
+          this.switchToNextAccount();
+        }
+        
+        // Actualizar estado
+        this.io.emit('status', {
+          sessionName: account.sessionName,
+          phoneNumber: account.phoneNumber,
+          status: 'disconnected',
+          active: false,
+          reason: 'logged-out'
+        });
+        
+        return true;
+      } else {
+        throw new Error('Cliente no inicializado');
+      }
+    } catch (error) {
+      console.error(`Error en logoutAccount: ${error.message}`);
+      throw error;
+    }
+  }
+  
   // Verificar si un mensaje es de un administrador
   isAdminMessage(message) {
     return config.whatsapp.adminNumbers.includes(message.from) && message.body.startsWith('!');

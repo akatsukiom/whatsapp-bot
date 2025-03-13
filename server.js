@@ -60,6 +60,108 @@ function setupServer() {
       }
     });
     
+    // Cerrar sesión de una cuenta
+    socket.on('logoutAccount', (sessionName) => {
+      try {
+        console.log(`Solicitud recibida para cerrar sesión de cuenta: ${sessionName}`);
+        
+        if (global.whatsappManager) {
+          // Buscar la cuenta por su sessionName
+          const accountIndex = global.whatsappManager.accounts.findIndex(
+            account => account.sessionName === sessionName
+          );
+          
+          if (accountIndex >= 0) {
+            const account = global.whatsappManager.accounts[accountIndex];
+            console.log(`Cerrando sesión de ${account.phoneNumber}`);
+            
+            // Cerrar sesión de WhatsApp
+            if (account.client) {
+              account.client.logout()
+                .then(() => {
+                  console.log(`Sesión cerrada correctamente para ${account.phoneNumber}`);
+                  socket.emit('accountLoggedOut', { sessionName, success: true });
+                  
+                  // Eliminar archivos de sesión si es necesario
+                  const sessionDir = `${config.paths.sessions}/${sessionName}`;
+                  if (fs.existsSync(sessionDir)) {
+                    fs.rmdirSync(sessionDir, { recursive: true });
+                    console.log(`Directorio de sesión eliminado: ${sessionDir}`);
+                  }
+                  
+                  // Actualizamos el estado de la cuenta
+                  if (global.whatsappManager.activeAccount === account) {
+                    // Si era la cuenta activa, cambiar a otra
+                    global.whatsappManager.switchToNextAccount();
+                  }
+                  
+                  // Emitir estado actualizado
+                  global.whatsappManager.emitCurrentStatus();
+                })
+                .catch(err => {
+                  console.error(`Error al cerrar sesión: ${err.message}`);
+                  socket.emit('error', `Error al cerrar sesión: ${err.message}`);
+                });
+            } else {
+              socket.emit('error', 'Cliente no inicializado');
+            }
+          } else {
+            console.warn(`Cuenta no encontrada: ${sessionName}`);
+            socket.emit('error', 'Cuenta no encontrada');
+          }
+        } else {
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+        }
+      } catch (err) {
+        console.error('Error al procesar la solicitud de cierre de sesión:', err);
+        socket.emit('error', 'Error interno del servidor');
+      }
+    });
+
+    // Agregar nueva cuenta
+    socket.on('addAccount', (data) => {
+      try {
+        console.log(`Solicitud recibida para agregar nueva cuenta: ${data.phoneNumber}`);
+        
+        if (!data.phoneNumber) {
+          socket.emit('error', 'Número de teléfono no proporcionado');
+          return;
+        }
+        
+        if (global.whatsappManager) {
+          // Verificar que la cuenta no exista ya
+          const existingAccount = global.whatsappManager.accounts.find(
+            account => account.phoneNumber === data.phoneNumber
+          );
+          
+          if (existingAccount) {
+            socket.emit('error', 'Este número ya está registrado');
+            return;
+          }
+          
+          // Agregar la nueva cuenta
+          const index = global.whatsappManager.addAccount(
+            data.phoneNumber, 
+            data.sessionName || `cuenta_${Date.now()}`
+          );
+          
+          console.log(`Nueva cuenta agregada: ${data.phoneNumber} (índice: ${index})`);
+          socket.emit('accountAdded', { 
+            phoneNumber: data.phoneNumber, 
+            index: index,
+            success: true 
+          });
+        } else {
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+        }
+      } catch (err) {
+        console.error('Error al agregar nueva cuenta:', err);
+        socket.emit('error', 'Error interno del servidor');
+      }
+    });
+    
     // Obtener todas las respuestas
     socket.on('getResponses', () => {
       try {
@@ -232,6 +334,12 @@ function setupServer() {
         console.error('Error en recarga forzada:', err);
         socket.emit('error', 'Error al recargar respuestas: ' + err.message);
       }
+    });
+    
+    // Ping para mantener viva la conexión
+    socket.on('ping', () => {
+      // Este evento simplemente mantiene la conexión activa
+      // No necesita hacer nada más que recibir el ping
     });
   });
   
