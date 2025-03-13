@@ -13,6 +13,7 @@ class WhatsAppManager {
       responses: {},
       mediaHandlers: {}
     };
+    this.pendingResponses = {}; // Para almacenar mensajes pendientes de respuesta
     
     // Cargar datos de aprendizaje si existen
     this.loadLearningData();
@@ -206,6 +207,54 @@ class WhatsAppManager {
   // Manejar comandos de administración
   async handleAdminCommand(message, client) {
     const command = message.body.split(' ')[0].toLowerCase();
+    
+    // Para el comando !responder, necesitamos manejar el formato diferente
+    if (command === '!responder') {
+      // Formato: !responder messageId | respuesta
+      const fullParams = message.body.substring(command.length).trim();
+      const separatorIndex = fullParams.indexOf('|');
+      
+      if (separatorIndex === -1) {
+        client.sendMessage(message.from, 'Formato incorrecto. Usa: !responder messageId | respuesta');
+        return;
+      }
+      
+      const messageId = fullParams.substring(0, separatorIndex).trim();
+      const response = fullParams.substring(separatorIndex + 1).trim();
+      
+      // Verificar si tenemos este mensaje pendiente
+      if (!this.pendingResponses || !this.pendingResponses[messageId]) {
+        client.sendMessage(message.from, 'No se encontró el mensaje pendiente o ya expiró.');
+        return;
+      }
+      
+      try {
+        // Enviar la respuesta al chat original
+        const pendingMessage = this.pendingResponses[messageId];
+        await client.sendMessage(pendingMessage.chatId, response);
+        
+        // Confirmar al administrador
+        client.sendMessage(message.from, `✅ Respuesta enviada a ${pendingMessage.contact}`);
+        
+        // Opcional: Guardar esta respuesta en la base de aprendizaje
+        const originalMessage = pendingMessage.message.toLowerCase();
+        this.learningDatabase.responses[originalMessage] = response;
+        this.saveLearningData();
+        
+        // Eliminar el mensaje de pendientes
+        delete this.pendingResponses[messageId];
+        
+        // Informar que se ha guardado en la base de conocimientos
+        client.sendMessage(message.from, `📝 La respuesta también se ha guardado en la base de conocimientos.`);
+      } catch (error) {
+        console.error('Error al enviar respuesta:', error);
+        client.sendMessage(message.from, `❌ Error al enviar respuesta: ${error.message}`);
+      }
+      
+      return;
+    }
+    
+    // Para los demás comandos, usamos el código original
     const params = message.body.split(' ').slice(1).join(' ');
     
     switch (command) {
@@ -229,12 +278,12 @@ class WhatsAppManager {
         }
         
         const trigger = parts[0].trim().toLowerCase();
-        const response = parts[1].trim();
+        const learnResponse = parts[1].trim();
         
-        this.learningDatabase.responses[trigger] = response;
+        this.learningDatabase.responses[trigger] = learnResponse;
         this.saveLearningData();
         
-        client.sendMessage(message.from, `Aprendido: "${trigger}" -> "${response}"`);
+        client.sendMessage(message.from, `Aprendido: "${trigger}" -> "${learnResponse}"`);
         break;
         
       case '!status':
@@ -247,11 +296,39 @@ class WhatsAppManager {
           }
           statusMsg += '\n';
         });
+        
+        // Añadir información sobre mensajes pendientes
+        if (this.pendingResponses && Object.keys(this.pendingResponses).length > 0) {
+          statusMsg += '\nMensajes pendientes de respuesta: ' + Object.keys(this.pendingResponses).length;
+        }
+        
         client.sendMessage(message.from, statusMsg);
+        break;
+      
+      case '!pendientes':
+        // Mostrar lista de mensajes pendientes
+        if (!this.pendingResponses || Object.keys(this.pendingResponses).length === 0) {
+          client.sendMessage(message.from, 'No hay mensajes pendientes de respuesta.');
+          return;
+        }
+        
+        let pendingMsg = '📋 *Mensajes pendientes de respuesta:*\n\n';
+        
+        Object.entries(this.pendingResponses).forEach(([id, data], index) => {
+          const time = data.timestamp.toLocaleString();
+          pendingMsg += `*${index + 1}.* ID: ${id}\n`;
+          pendingMsg += `   De: ${data.contact}\n`;
+          pendingMsg += `   Mensaje: ${data.message}\n`;
+          pendingMsg += `   Recibido: ${time}\n\n`;
+        });
+        
+        pendingMsg += 'Para responder usa: !responder [ID] | [respuesta]';
+        
+        client.sendMessage(message.from, pendingMsg);
         break;
         
       default:
-        client.sendMessage(message.from, 'Comando desconocido. Comandos disponibles: !switch, !learn, !status');
+        client.sendMessage(message.from, 'Comando desconocido. Comandos disponibles: !switch, !learn, !status, !pendientes, !responder');
     }
   }
   
@@ -295,6 +372,71 @@ class WhatsAppManager {
     // Si encontramos una respuesta, la enviamos
     if (response) {
       client.sendMessage(message.from, response);
+    } else {
+      // Si no tenemos una respuesta, reenviar al administrador
+      try {
+        // Guardamos temporalmente el chat que requiere respuesta para poder responder después
+        // Formato: { chatId: string, message: string, timestamp: Date }
+        if (!this.pendingResponses) {
+          this.pendingResponses = {};
+        }
+        
+        const timestamp = new Date();
+        const messageId = `${message.from}_${timestamp.getTime()}`;
+        
+        this.pendingResponses[messageId] = {
+          chatId: message.from,
+          message: message.body,
+          timestamp: timestamp,
+          contact: message._data.notifyName || "Usuario" // Nombre del contacto si está disponible
+        };
+        
+        // Reenviar al administrador (podemos enviar a todos los administradores configurados)
+        for (const adminNumber of config.whatsapp.adminNumbers) {
+          // Agregamos un ID único para poder identificar a qué mensaje responde el admin
+          await client.sendMessage(adminNumber, 
+            `⚠️ *MENSAJE SIN RESPUESTA* ⚠️\n\n` +
+            `*De:* ${this.pendingResponses[messageId].contact} (${message.from})\n` +
+            `*Grupo:* ${isGroup ? 'Sí' : 'No'}\n` +
+            `*Mensaje:* ${message.body}\n\n` +
+            `Para responder, escribe:\n` +
+            `!responder ${messageId} | Tu respuesta aquí`
+          );
+        }
+        
+        // Opcional: Enviar un mensaje al usuario indicando que su mensaje está siendo procesado
+        // client.sendMessage(message.from, "Estamos procesando tu consulta, en breve te responderemos.");
+        
+        // Limpiar mensajes pendientes antiguos (más de 24 horas)
+        this.cleanOldPendingResponses();
+      } catch (error) {
+        console.error('Error al reenviar mensaje al administrador:', error);
+      }
+    }
+  }
+  
+  // Nueva función para limpiar mensajes pendientes antiguos
+  cleanOldPendingResponses() {
+    if (!this.pendingResponses) return;
+    
+    const now = new Date();
+    const oldResponseIds = [];
+    
+    // Identificar mensajes antiguos (más de 24 horas)
+    for (const [id, data] of Object.entries(this.pendingResponses)) {
+      const ageInHours = (now - data.timestamp) / (1000 * 60 * 60);
+      if (ageInHours > 24) {
+        oldResponseIds.push(id);
+      }
+    }
+    
+    // Eliminar mensajes antiguos
+    oldResponseIds.forEach(id => {
+      delete this.pendingResponses[id];
+    });
+    
+    if (oldResponseIds.length > 0) {
+      console.log(`Se eliminaron ${oldResponseIds.length} mensajes pendientes antiguos`);
     }
   }
   
