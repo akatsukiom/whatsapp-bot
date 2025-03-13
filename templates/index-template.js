@@ -4,7 +4,8 @@ const fs = require('fs');
 const config = require('../config');
 
 function createIndexHtml() {
-  const htmlContent = `<!DOCTYPE html>
+  const htmlContent = `
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -28,11 +29,12 @@ function createIndexHtml() {
     }
     .qr-container {
       text-align: center;
-      margin: 20px 0;
+      margin: 20px auto;
       padding: 20px;
       border-radius: 10px;
       background-color: white;
       box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      max-width: 500px;
       transition: all 0.3s ease;
     }
     .qr-container.active {
@@ -46,496 +48,418 @@ function createIndexHtml() {
       display: inline-block;
       margin-right: 5px;
     }
+    .status-badge {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 20px;
+      margin-left: 10px;
+      font-size: 14px;
+      font-weight: bold;
+    }
     .status-ready {
       background-color: #28a745;
+      color: white;
     }
     .status-waiting {
       background-color: #ffc107;
+      color: black;
     }
     .status-error {
       background-color: #dc3545;
-    }
-    .active-badge {
-      background-color: #25d366;
       color: white;
-      padding: 5px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: bold;
-      margin-left: 10px;
     }
-    #loading-container {
-      text-align: center;
+    .phone-number {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .account-controls {
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      animation: spinner-border .75s linear infinite;
+    }
+    .account-selector {
+      margin: 20px auto;
+      max-width: 500px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .log-container {
+      margin-top: 30px;
+      max-height: 200px;
+      overflow-y: auto;
       background-color: white;
       border-radius: 10px;
-      padding: 30px;
-      margin: 50px auto;
-      max-width: 500px;
+      padding: 15px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    .spinner-container {
-      margin-bottom: 20px;
+    .log-entry {
+      margin-bottom: 5px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .log-entry:last-child {
+      border-bottom: none;
     }
     .progress {
       height: 10px;
-      margin: 20px 0;
+      margin: 10px 0;
     }
-    #status-container {
-      background-color: white;
-      border-radius: 10px;
-      padding: 15px;
-      margin-top: 20px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    .status-entry {
-      border-bottom: 1px solid #f0f0f0;
-      padding: 8px 0;
-    }
-    .status-entry:last-child {
-      border-bottom: none;
-    }
-    .admin-button {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #075e54;
-      border-color: #075e54;
-    }
-    .admin-button:hover {
-      background-color: #054c44;
-      border-color: #054c44;
-    }
-    .phone-number {
-      font-weight: bold;
-      font-size: 18px;
-      margin-bottom: 5px;
-    }
-    .connection-stats {
-      background-color: #f8f9fa;
-      border-radius: 10px;
-      padding: 15px;
-      margin-top: 30px;
-      margin-bottom: 20px;
-    }
-    .connection-title {
-      display: flex;
-      align-items: center;
-      margin-bottom: 15px;
-    }
-    .connection-title i {
-      margin-right: 10px;
-      color: #075e54;
+    @keyframes spinner-border {
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Pantalla de carga inicial -->
-    <div id="loading-container">
-      <h2 class="mb-4">Inicializando WhatsApp Bot Manager</h2>
-      <div class="spinner-container">
-        <div class="spinner-border text-success" role="status">
-          <span class="visually-hidden">Cargando...</span>
-        </div>
-      </div>
-      <p id="loading-message">Preparando conexiones de WhatsApp...</p>
-      <div class="progress">
-        <div id="loading-progress" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 25%" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
-      </div>
-      <p class="text-muted"><small>Este proceso puede tardar hasta 30 segundos</small></p>
+    <div class="header-container">
+      <h1 class="text-center mb-0"><i class="bi bi-whatsapp me-2"></i>WhatsApp Bot Manager</h1>
     </div>
-
-    <!-- Contenido principal (oculto inicialmente) -->
-    <div id="main-content" style="display: none;">
-      <div class="header-container">
-        <h1 class="text-center mb-0"><i class="bi bi-whatsapp me-2"></i>WhatsApp Bot Manager</h1>
+    
+    <!-- Cuenta activa y selector -->
+    <div class="account-selector">
+      <div>
+        <h4>Cuenta actual: <span id="current-account-index">1</span> de <span id="total-accounts">0</span></h4>
+      </div>
+      <div class="btn-group">
+        <button id="prev-account" class="btn btn-outline-primary"><i class="bi bi-chevron-left"></i></button>
+        <button id="next-account" class="btn btn-outline-primary"><i class="bi bi-chevron-right"></i></button>
+      </div>
+    </div>
+    
+    <!-- Contenedor de QR y estado -->
+    <div id="loading-container" class="qr-container">
+      <div class="spinner-border text-success" role="status">
+        <span class="visually-hidden">Cargando...</span>
+      </div>
+      <p>Inicializando WhatsApp Bot...</p>
+      <div class="progress">
+        <div id="loading-progress" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+             role="progressbar" style="width: 25%" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+    </div>
+    
+    <div id="account-container" class="qr-container" style="display: none;">
+      <div class="phone-number" id="account-phone">---</div>
+      <div id="account-status">
+        <span class="status-badge status-waiting">Esperando...</span>
       </div>
       
-      <div class="connection-stats">
-        <div class="connection-title">
-          <i class="bi bi-graph-up-arrow fs-4"></i>
-          <h3 class="mb-0">Resumen de conexiones</h3>
-        </div>
-        <div class="row">
-          <div class="col-md-4">
-            <div class="card text-center mb-3">
-              <div class="card-body">
-                <h5 class="card-title">Total de cuentas</h5>
-                <p class="card-text fs-1" id="total-accounts">0</p>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="card text-center mb-3">
-              <div class="card-body">
-                <h5 class="card-title">Cuentas conectadas</h5>
-                <p class="card-text fs-1" id="connected-accounts">0</p>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="card text-center mb-3">
-              <div class="card-body">
-                <h5 class="card-title">Cuenta activa</h5>
-                <p class="card-text fs-1" id="active-account">-</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div id="qr-display" class="mt-4">
+        <!-- El QR se mostrará aquí -->
       </div>
       
-      <div class="row" id="accounts-container">
-        <!-- Las cuentas se agregarán aquí dinámicamente -->
+      <div class="account-controls">
+        <button id="logout-btn" class="btn btn-danger" disabled>
+          <i class="bi bi-power me-1"></i> Cerrar sesión
+        </button>
+        <button id="add-account-btn" class="btn btn-primary">
+          <i class="bi bi-plus-circle me-1"></i> Agregar nueva cuenta
+        </button>
       </div>
-      
-      <div id="no-connections" class="alert alert-warning mt-4" style="display: none;">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i> No hay conexiones activas. Espera mientras se inicializa el sistema o revisa los logs del servidor.
+    </div>
+    
+    <!-- Log de eventos -->
+    <div class="log-container">
+      <h5><i class="bi bi-list-ul me-2"></i>Historial de eventos</h5>
+      <div id="event-log">
+        <!-- Eventos se agregarán aquí -->
+        <div class="log-entry text-muted">Esperando eventos...</div>
       </div>
-      
-      <div class="connection-title mt-4">
-        <i class="bi bi-journal-text fs-4"></i>
-        <h3>Historial de eventos</h3>
-      </div>
-      <div id="status-container">
-        <p class="text-muted text-center">Esperando información de estado...</p>
-      </div>
-      
-      <div class="row mt-4">
-        <div class="col-12 text-center">
-          <a href="/admin" class="btn btn-primary btn-lg admin-button">
-            <i class="bi bi-gear-fill me-2"></i>Ir al Panel de Administración
-          </a>
-        </div>
-      </div>
+    </div>
+    
+    <!-- Botón para ir al panel de administración -->
+    <div class="text-center mt-4">
+      <a href="/admin" class="btn btn-success btn-lg">
+        <i class="bi bi-gear-fill me-2"></i>Ir al Panel de Administración
+      </a>
     </div>
   </div>
   
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // Conectar a Socket.IO
     const socket = io();
+    
+    // Elementos del DOM
     const loadingContainer = document.getElementById('loading-container');
-    const mainContent = document.getElementById('main-content');
-    const accountsContainer = document.getElementById('accounts-container');
-    const statusContainer = document.getElementById('status-container');
-    const noConnectionsDiv = document.getElementById('no-connections');
+    const accountContainer = document.getElementById('account-container');
+    const qrDisplay = document.getElementById('qr-display');
+    const accountPhone = document.getElementById('account-phone');
+    const accountStatus = document.getElementById('account-status');
+    const eventLog = document.getElementById('event-log');
+    const currentAccountIndex = document.getElementById('current-account-index');
+    const totalAccounts = document.getElementById('total-accounts');
+    const prevAccountBtn = document.getElementById('prev-account');
+    const nextAccountBtn = document.getElementById('next-account');
+    const logoutBtn = document.getElementById('logout-btn');
+    const addAccountBtn = document.getElementById('add-account-btn');
     const loadingProgress = document.getElementById('loading-progress');
-    const loadingMessage = document.getElementById('loading-message');
-    const totalAccountsEl = document.getElementById('total-accounts');
-    const connectedAccountsEl = document.getElementById('connected-accounts');
-    const activeAccountEl = document.getElementById('active-account');
     
-    let connectionCount = 0;
-    let connectionProgress = 25;
-    let accounts = {};
-    let progressInterval;
+    // Variables de estado
+    let accounts = [];
+    let currentAccount = 0;
+    let loadingInterval;
+    let progressValue = 25;
     
-    // Función para actualizar el contador de progreso
-    function startProgressAnimation() {
-      progressInterval = setInterval(() => {
-        if (connectionProgress < 90) {
-          connectionProgress += 5;
-          loadingProgress.style.width = connectionProgress + '%';
-          loadingProgress.setAttribute('aria-valuenow', connectionProgress);
-          
-          // Actualizar mensaje según el progreso
-          if (connectionProgress > 40 && connectionProgress < 60) {
-            loadingMessage.textContent = 'Inicializando el navegador...';
-          } else if (connectionProgress >= 60 && connectionProgress < 75) {
-            loadingMessage.textContent = 'Conectando con WhatsApp...';
-          } else if (connectionProgress >= 75) {
-            loadingMessage.textContent = 'Generando códigos QR...';
-          }
-        }
-      }, 700);
-    }
+    // Iniciar animación de carga
+    loadingInterval = setInterval(() => {
+      if (progressValue < 90) {
+        progressValue += 5;
+        loadingProgress.style.width = progressValue + '%';
+        loadingProgress.setAttribute('aria-valuenow', progressValue);
+      }
+    }, 700);
     
-    // Completar la carga cuando tengamos datos reales
-    function completeLoading() {
-      clearInterval(progressInterval);
-      connectionProgress = 100;
-      loadingProgress.style.width = '100%';
-      loadingProgress.setAttribute('aria-valuenow', 100);
-      
-      setTimeout(() => {
-        loadingContainer.style.display = 'none';
-        mainContent.style.display = 'block';
-      }, 500);
-    }
-    
-    // Actualizar estadísticas de conexión
-    function updateConnectionStats() {
-      const accountList = Object.values(accounts);
-      totalAccountsEl.textContent = accountList.length;
-      
-      const connectedAccounts = accountList.filter(acc => 
-        acc.status === 'ready' || acc.status === 'authenticated'
-      ).length;
-      connectedAccountsEl.textContent = connectedAccounts;
-      
-      const activeAccount = accountList.find(acc => acc.active);
-      if (activeAccount) {
-        activeAccountEl.textContent = activeAccount.phoneNumber.substring(0, 5) + '...';
-      } else {
-        activeAccountEl.textContent = '-';
-      }
-    }
-    
-    // Iniciar animación de progreso
-    startProgressAnimation();
-    
-    // Solicitar estado actual al cargar la página
-    socket.on('connect', () => {
-      console.log('Conectado al servidor Socket.IO');
-      socket.emit('requestStatus');
-      
-      // Si no hay respuesta después de 10 segundos, mostrar mensaje
-      setTimeout(() => {
-        if (connectionCount === 0) {
-          completeLoading();
-          noConnectionsDiv.style.display = 'block';
-          statusContainer.innerHTML = '<p class="text-danger text-center"><i class="bi bi-exclamation-circle me-2"></i>No se ha recibido información de estado. Revisa los logs del servidor.</p>';
-        }
-      }, 10000);
-    });
-    
-    // Manejar códigos QR
-    socket.on('qr', (data) => {
-      console.log('QR recibido para:', data.sessionName);
-      connectionCount++;
-      
-      // Completar carga si es el primer QR
-      if (connectionCount === 1) {
-        completeLoading();
-      }
-      
-      noConnectionsDiv.style.display = 'none';
-      
-      // Almacenar información de la cuenta
-      if (!accounts[data.sessionName]) {
-        accounts[data.sessionName] = {
-          phoneNumber: data.phoneNumber,
-          status: 'waiting',
-          active: false
-        };
-      }
-      
-      // Buscar si ya existe un contenedor para esta cuenta
-      let accountElement = document.getElementById('account-' + data.sessionName);
-      
-      if (!accountElement) {
-        // Crear nuevo contenedor si no existe
-        accountElement = document.createElement('div');
-        accountElement.id = 'account-' + data.sessionName;
-        accountElement.className = 'col-md-6 mb-4';
-        accountElement.innerHTML = \`
-          <div class="qr-container \${accounts[data.sessionName].active ? 'active' : ''}">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <div class="phone-number">
-                \${data.phoneNumber || data.sessionName}
-                \${accounts[data.sessionName].active ? '<span class="active-badge">ACTIVA</span>' : ''}
-              </div>
-            </div>
-            <div id="status-\${data.sessionName}" class="mb-3">
-              <span class="status-indicator status-waiting"></span>
-              <span class="status-text">Esperando escaneo...</span>
-            </div>
-            <div id="qr-\${data.sessionName}" class="mt-3">
-              <img src="\${data.qrDataUrl}" alt="Código QR" class="img-fluid">
-            </div>
-          </div>
-        \`;
-        accountsContainer.appendChild(accountElement);
-      } else {
-        // Actualizar QR existente
-        const qrElement = document.getElementById('qr-' + data.sessionName);
-        qrElement.innerHTML = \`<img src="\${data.qrDataUrl}" alt="Código QR" class="img-fluid">\`;
-        
-        // Actualizar estado
-        const statusElement = document.getElementById('status-' + data.sessionName);
-        statusElement.innerHTML = \`
-          <span class="status-indicator status-waiting"></span>
-          <span class="status-text">Esperando escaneo...</span>
-        \`;
-        
-        // Actualizar badge de activo
-        const container = accountElement.querySelector('.qr-container');
-        const phoneNumberEl = accountElement.querySelector('.phone-number');
-        
-        if (accounts[data.sessionName].active) {
-          container.classList.add('active');
-          if (!phoneNumberEl.querySelector('.active-badge')) {
-            phoneNumberEl.innerHTML += '<span class="active-badge">ACTIVA</span>';
-          }
-        } else {
-          container.classList.remove('active');
-          const badge = phoneNumberEl.querySelector('.active-badge');
-          if (badge) {
-            badge.remove();
-          }
-        }
-      }
-      
-      updateConnectionStats();
-    });
-    
-    // Manejar actualizaciones de estado
-    socket.on('status', (data) => {
-      console.log('Estado actualizado:', data);
-      connectionCount++;
-      
-      // Completar carga si es el primer estado
-      if (connectionCount === 1) {
-        completeLoading();
-      }
-      
-      noConnectionsDiv.style.display = 'none';
-      
-      // Actualizar en nuestro registro de cuentas
-      if (!accounts[data.sessionName]) {
-        accounts[data.sessionName] = {
-          phoneNumber: data.phoneNumber,
-          status: data.status,
-          active: data.active || false
-        };
-      } else {
-        accounts[data.sessionName].status = data.status;
-        accounts[data.sessionName].active = data.active || false;
-      }
-      
-      // Buscar si ya existe un contenedor para esta cuenta
-      let accountElement = document.getElementById('account-' + data.sessionName);
-      
-      if (!accountElement && (data.status === 'ready' || data.status === 'authenticated' || data.status === 'initializing')) {
-        // Crear nuevo contenedor si no existe
-        accountElement = document.createElement('div');
-        accountElement.id = 'account-' + data.sessionName;
-        accountElement.className = 'col-md-6 mb-4';
-        accountElement.innerHTML = \`
-          <div class="qr-container \${data.active ? 'active' : ''}">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <div class="phone-number">
-                \${data.phoneNumber || data.sessionName}
-                \${data.active ? '<span class="active-badge">ACTIVA</span>' : ''}
-              </div>
-            </div>
-            <div id="status-\${data.sessionName}" class="mb-3">
-              <span class="status-indicator status-waiting"></span>
-              <span class="status-text">Inicializando...</span>
-            </div>
-            <div id="qr-\${data.sessionName}" class="mt-3">
-              <p>Esperando información de conexión...</p>
-            </div>
-          </div>
-        \`;
-        accountsContainer.appendChild(accountElement);
-      }
-      
-      // Actualizar el estado si existe el elemento
-      if (accountElement) {
-        const statusElement = document.getElementById('status-' + data.sessionName);
-        const container = accountElement.querySelector('.qr-container');
-        const phoneNumberEl = accountElement.querySelector('.phone-number');
-        
-        if (statusElement) {
-          let statusClass = 'status-waiting';
-          let statusText = 'Desconocido';
-          
-          switch (data.status) {
-            case 'ready':
-              statusClass = 'status-ready';
-              statusText = 'Conectado';
-              // Ocultar QR cuando esté listo
-              const qrElement = document.getElementById('qr-' + data.sessionName);
-              if (qrElement) {
-                qrElement.innerHTML = '<p class="alert alert-success"><i class="bi bi-check-circle-fill me-2"></i>WhatsApp conectado correctamente</p>';
-              }
-              break;
-            case 'authenticated':
-              statusClass = 'status-ready';
-              statusText = 'Autenticado';
-              break;
-            case 'initializing':
-              statusClass = 'status-waiting';
-              statusText = 'Inicializando';
-              break;
-            case 'disconnected':
-              statusClass = 'status-error';
-              statusText = 'Desconectado: ' + (data.reason || 'razón desconocida');
-              break;
-            default:
-              statusClass = 'status-waiting';
-              statusText = data.status;
-          }
-          
-          statusElement.innerHTML = \`
-            <span class="status-indicator \${statusClass}"></span>
-            <span class="status-text">\${statusText}</span>
-          \`;
-        }
-        
-        // Actualizar si es activa
-        if (data.active) {
-          container.classList.add('active');
-          if (!phoneNumberEl.querySelector('.active-badge')) {
-            phoneNumberEl.innerHTML = \`
-              \${data.phoneNumber || data.sessionName}
-              <span class="active-badge">ACTIVA</span>
-            \`;
-          }
-        } else {
-          container.classList.remove('active');
-          const badge = phoneNumberEl.querySelector('.active-badge');
-          if (badge) {
-            badge.remove();
-          }
-          phoneNumberEl.textContent = data.phoneNumber || data.sessionName;
-        }
-      }
-      
-      // Actualizar contenedor de estado general
+    // Función para mostrar eventos en el log
+    function addLogEntry(message, type = 'info') {
       const now = new Date().toLocaleTimeString();
-      let statusClass = 'text-secondary';
-      let icon = 'info-circle';
+      const icons = {
+        info: 'info-circle',
+        success: 'check-circle',
+        error: 'exclamation-circle',
+        warning: 'exclamation-triangle'
+      };
       
-      if (data.status === 'ready' || data.status === 'authenticated') {
-        statusClass = 'text-success';
-        icon = 'check-circle';
-      } else if (data.status === 'disconnected') {
-        statusClass = 'text-danger';
-        icon = 'x-circle';
-      } else {
-        statusClass = 'text-warning';
-        icon = 'exclamation-circle';
-      }
+      const colors = {
+        info: 'text-primary',
+        success: 'text-success',
+        error: 'text-danger',
+        warning: 'text-warning'
+      };
       
-      const statusUpdate = document.createElement('div');
-      statusUpdate.className = 'status-entry';
-      statusUpdate.innerHTML = \`
-        <p class="\${statusClass}">
-          <i class="bi bi-\${icon}-fill me-2"></i>
-          <small>\${now}</small> - <strong>\${data.phoneNumber || data.sessionName}</strong>: 
-          \${data.status}\${data.active ? ' <span class="badge bg-success">ACTIVA</span>' : ''}
-        </p>
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + colors[type];
+      entry.innerHTML = \`
+        <i class="bi bi-\${icons[type]} me-1"></i>
+        <small>\${now}</small> - \${message}
       \`;
       
-      // Limpiar el mensaje de "Esperando información" si es la primera actualización
-      if (statusContainer.querySelector('.text-muted')) {
-        statusContainer.innerHTML = '';
+      // Remover "Esperando eventos..." si existe
+      if (eventLog.querySelector('.text-muted')) {
+        eventLog.innerHTML = '';
       }
       
-      statusContainer.prepend(statusUpdate);
+      eventLog.prepend(entry);
       
-      // Limitar a 10 mensajes de estado
-      if (statusContainer.children.length > 10) {
-        statusContainer.removeChild(statusContainer.lastChild);
+      // Limitar a 10 entradas
+      if (eventLog.children.length > 10) {
+        eventLog.removeChild(eventLog.lastChild);
+      }
+    }
+    
+    // Función para mostrar la cuenta actual
+    function displayAccount(index) {
+      if (accounts.length === 0) return;
+      
+      if (index < 0) index = 0;
+      if (index >= accounts.length) index = accounts.length - 1;
+      
+      currentAccount = index;
+      currentAccountIndex.textContent = currentAccount + 1;
+      
+      const account = accounts[currentAccount];
+      accountPhone.textContent = account.phoneNumber || 'Sin número';
+      
+      // Actualizar botones de navegación
+      prevAccountBtn.disabled = currentAccount === 0;
+      nextAccountBtn.disabled = currentAccount === accounts.length - 1;
+      
+      // Actualizar estado
+      updateAccountStatus(account);
+      
+      // Mostrar/ocultar QR según el estado
+      if (account.qrData && (account.status === 'waiting' || account.status === 'initializing')) {
+        qrDisplay.innerHTML = \`<img src="\${account.qrData}" alt="Código QR" class="img-fluid">\`;
+      } else if (account.status === 'ready' || account.status === 'authenticated') {
+        qrDisplay.innerHTML = \`
+          <div class="alert alert-success">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            WhatsApp conectado correctamente
+          </div>
+        \`;
+        logoutBtn.disabled = false;
+      } else {
+        qrDisplay.innerHTML = \`
+          <div class="alert alert-warning">
+            <i class="bi bi-hourglass-split me-2"></i>
+            Esperando código QR...
+          </div>
+        \`;
+        logoutBtn.disabled = true;
+      }
+    }
+    
+    // Función para actualizar el estado de la cuenta
+    function updateAccountStatus(account) {
+      let statusClass, statusText;
+      
+      switch (account.status) {
+        case 'ready':
+          statusClass = 'status-ready';
+          statusText = 'Conectado';
+          break;
+        case 'authenticated':
+          statusClass = 'status-ready';
+          statusText = 'Autenticado';
+          break;
+        case 'disconnected':
+          statusClass = 'status-error';
+          statusText = 'Desconectado';
+          break;
+        case 'initializing':
+          statusClass = 'status-waiting';
+          statusText = 'Inicializando';
+          break;
+        default:
+          statusClass = 'status-waiting';
+          statusText = 'Esperando';
       }
       
-      updateConnectionStats();
+      accountStatus.innerHTML = \`<span class="status-badge \${statusClass}">\${statusText}</span>\`;
+      
+      // Aplicar borde verde si está activa
+      if (account.active) {
+        accountContainer.classList.add('active');
+        accountStatus.innerHTML += ' <span class="badge bg-success ms-2">ACTIVA</span>';
+      } else {
+        accountContainer.classList.remove('active');
+      }
+    }
+    
+    // Eventos Socket.IO
+    socket.on('connect', () => {
+      addLogEntry('Conectado al servidor', 'success');
+      socket.emit('requestStatus');
     });
     
-    // Actualizar estado cada 30 segundos
+    socket.on('status', (data) => {
+      // Si es el primer mensaje de estado, finalizar la carga
+      if (loadingContainer.style.display !== 'none') {
+        clearInterval(loadingInterval);
+        loadingContainer.style.display = 'none';
+        accountContainer.style.display = 'block';
+      }
+      
+      // Buscar si la cuenta ya existe en nuestra lista
+      const existingIndex = accounts.findIndex(acc => acc.sessionName === data.sessionName);
+      
+      if (existingIndex >= 0) {
+        // Actualizar cuenta existente
+        accounts[existingIndex].status = data.status;
+        accounts[existingIndex].active = data.active;
+        
+        // Si estamos mostrando esta cuenta, actualizar la vista
+        if (currentAccount === existingIndex) {
+          displayAccount(currentAccount);
+        }
+      } else if (data.sessionName !== 'sistema') {
+        // Agregar nueva cuenta (ignorar mensajes del sistema)
+        accounts.push({
+          sessionName: data.sessionName,
+          phoneNumber: data.phoneNumber,
+          status: data.status,
+          active: data.active,
+          qrData: null
+        });
+        
+        totalAccounts.textContent = accounts.length;
+        
+        // Si es la primera cuenta, mostrarla
+        if (accounts.length === 1) {
+          displayAccount(0);
+        }
+      }
+      
+      // Agregar al log
+      if (data.sessionName === 'sistema') {
+        addLogEntry(data.message || 'Actualización del sistema', 'info');
+      } else {
+        addLogEntry(\`\${data.phoneNumber}: \${data.status}\${data.active ? ' (ACTIVA)' : ''}\`, 
+                    data.status === 'ready' ? 'success' : 'info');
+      }
+    });
+    
+    socket.on('qr', (data) => {
+      // Buscar la cuenta correspondiente
+      const accountIndex = accounts.findIndex(acc => acc.sessionName === data.sessionName);
+      
+      if (accountIndex >= 0) {
+        // Actualizar los datos de QR
+        accounts[accountIndex].qrData = data.qrDataUrl;
+        accounts[accountIndex].status = 'waiting';
+        
+        // Si estamos mostrando esta cuenta, actualizar la vista
+        if (currentAccount === accountIndex) {
+          displayAccount(currentAccount);
+        }
+        
+        addLogEntry(\`Código QR generado para \${data.phoneNumber}\`, 'info');
+      } else {
+        // Si la cuenta no existe, agregarla
+        accounts.push({
+          sessionName: data.sessionName,
+          phoneNumber: data.phoneNumber,
+          status: 'waiting',
+          active: false,
+          qrData: data.qrDataUrl
+        });
+        
+        totalAccounts.textContent = accounts.length;
+        
+        // Si es la primera cuenta, mostrarla
+        if (accounts.length === 1) {
+          displayAccount(0);
+        }
+        
+        addLogEntry(\`Nueva cuenta: \${data.phoneNumber}\`, 'info');
+      }
+    });
+    
+    // Eventos de botones
+    prevAccountBtn.addEventListener('click', () => {
+      displayAccount(currentAccount - 1);
+    });
+    
+    nextAccountBtn.addEventListener('click', () => {
+      displayAccount(currentAccount + 1);
+    });
+    
+    logoutBtn.addEventListener('click', () => {
+      if (confirm('¿Estás seguro de cerrar la sesión de esta cuenta?')) {
+        socket.emit('logoutAccount', accounts[currentAccount].sessionName);
+        addLogEntry(\`Cerrando sesión de \${accounts[currentAccount].phoneNumber}\`, 'warning');
+        
+        // Deshabilitar botón mientras se procesa
+        logoutBtn.disabled = true;
+        logoutBtn.innerHTML = '<span class="loading-spinner me-2"></span> Cerrando sesión...';
+      }
+    });
+    
+    addAccountBtn.addEventListener('click', () => {
+      const phoneNumber = prompt('Ingresa el número de teléfono (con código de país):');
+      if (phoneNumber) {
+        socket.emit('addAccount', {
+          phoneNumber,
+          sessionName: 'cuenta_' + Date.now()
+        });
+        
+        addLogEntry(\`Agregando nueva cuenta: \${phoneNumber}\`, 'info');
+      }
+    });
+    
+    // Solicitar actualizaciones periódicas
     setInterval(() => {
       socket.emit('requestStatus');
     }, 30000);
