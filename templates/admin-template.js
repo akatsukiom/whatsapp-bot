@@ -58,6 +58,22 @@ function createAdminHtml() {
       right: 20px;
       z-index: 1100;
     }
+    /* Estilos para la mini consola */
+    #consoleLog {
+      height: 200px;
+      overflow-y: scroll;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background: #f8f9fa;
+    }
+    /* Estilos para el chat en tiempo real */
+    #botChat {
+      height: 300px;
+      overflow-y: scroll;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background: #fff;
+    }
   </style>
 </head>
 <body>
@@ -131,6 +147,35 @@ function createAdminHtml() {
         </div>
       </div>
     </div>
+    
+    <!-- Panel de Console Log en tiempo real -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="admin-panel">
+          <h3><i class="bi bi-terminal me-2"></i>Console Log</h3>
+          <div id="consoleLog">
+            <!-- Se mostrarán mensajes de log en tiempo real -->
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Panel de Mensajería en Tiempo Real -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="admin-panel">
+          <h3><i class="bi bi-chat-dots me-2"></i>Mensajería en Tiempo Real</h3>
+          <div id="botChat">
+            <!-- Se mostrarán los mensajes de chat -->
+          </div>
+          <div class="input-group mt-2">
+            <input type="text" id="chatInput" class="form-control" placeholder="Escribe un mensaje para el bot...">
+            <button id="sendChatBtn" class="btn btn-primary">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -138,14 +183,20 @@ function createAdminHtml() {
     // Conectar a Socket.IO
     const socket = io();
     
-    // Elementos del DOM
+    // Elementos del DOM para respuestas y notificaciones
     const addResponseForm = document.getElementById('addResponseForm');
     const triggerInput = document.getElementById('trigger');
     const responseInput = document.getElementById('response');
     const responsesTable = document.getElementById('responsesTable');
     const loadingOverlay = document.getElementById('loadingOverlay');
     const toastContainer = document.getElementById('toastContainer');
-    
+
+    // Elementos para Console Log y Chat
+    const consoleLogDiv = document.getElementById('consoleLog');
+    const botChatDiv = document.getElementById('botChat');
+    const chatInput = document.getElementById('chatInput');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+
     // Función para mostrar/ocultar overlay de carga
     function toggleLoading(show) {
       loadingOverlay.style.display = show ? 'flex' : 'none';
@@ -196,7 +247,6 @@ function createAdminHtml() {
       
       for (const [trigger, response] of Object.entries(responses)) {
         const row = document.createElement('tr');
-        
         row.innerHTML = \`
           <td>\${trigger}</td>
           <td>\${response}</td>
@@ -209,20 +259,16 @@ function createAdminHtml() {
             </button>
           </td>
         \`;
-        
         responsesTable.appendChild(row);
       }
       
-      // Agregar event listeners a los botones
+      // Agregar event listeners a los botones de editar y eliminar
       document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const trigger = e.target.closest('.edit-btn').getAttribute('data-trigger');
           const response = responses[trigger];
-          
           triggerInput.value = trigger;
           responseInput.value = response;
-          
-          // Scroll hacia el formulario
           addResponseForm.scrollIntoView({ behavior: 'smooth' });
         });
       });
@@ -230,7 +276,6 @@ function createAdminHtml() {
       document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const trigger = e.target.closest('.delete-btn').getAttribute('data-trigger');
-          
           if (confirm('¿Estás seguro de eliminar esta respuesta?')) {
             toggleLoading(true);
             socket.emit('deleteResponse', trigger);
@@ -242,10 +287,8 @@ function createAdminHtml() {
     // Enviar nueva respuesta
     addResponseForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      
       const trigger = triggerInput.value.trim().toLowerCase();
       const response = responseInput.value.trim();
-      
       if (trigger && response) {
         toggleLoading(true);
         socket.emit('addResponse', { trigger, response });
@@ -259,30 +302,18 @@ function createAdminHtml() {
       console.log('Solicitando recarga forzada de respuestas');
     });
     
-    // Escuchar evento de actualización de respuestas
-    socket.on('responsesUpdated', () => {
-      console.log('Las respuestas han sido actualizadas, recargando...');
-      socket.emit('getResponses');
-    });
-    
-    // Confirmar acciones
+    // Confirmar acciones de agregar o eliminar respuestas
     socket.on('responseAdded', () => {
       toggleLoading(false);
       showToast('Respuesta guardada correctamente');
-      
-      // Limpiar formulario
       triggerInput.value = '';
       responseInput.value = '';
-      
-      // Recargar respuestas
       socket.emit('getResponses');
     });
     
     socket.on('responseDeleted', () => {
       toggleLoading(false);
       showToast('Respuesta eliminada correctamente');
-      
-      // Recargar respuestas
       socket.emit('getResponses');
     });
     
@@ -290,6 +321,31 @@ function createAdminHtml() {
       toggleLoading(false);
       showToast(msg, 'error');
       console.error('Error del servidor:', msg);
+    });
+    
+    // Actualización en tiempo real de Console Log
+    socket.on('consoleLog', (msg) => {
+      const entry = document.createElement('div');
+      entry.textContent = msg;
+      consoleLogDiv.appendChild(entry);
+      consoleLogDiv.scrollTop = consoleLogDiv.scrollHeight;
+    });
+    
+    // Actualización en tiempo real de Mensajería (chat)
+    socket.on('botChatMessage', (data) => {
+      const entry = document.createElement('div');
+      entry.innerHTML = \`<strong>\${data.from}:</strong> \${data.message}\`;
+      botChatDiv.appendChild(entry);
+      botChatDiv.scrollTop = botChatDiv.scrollHeight;
+    });
+    
+    // Enviar mensaje desde el chat al servidor (para que el admin enseñe al bot, por ejemplo)
+    sendChatBtn.addEventListener('click', () => {
+      const message = chatInput.value.trim();
+      if (message) {
+        socket.emit('adminChatMessage', message);
+        chatInput.value = '';
+      }
     });
     
     // Mantener la conexión activa
