@@ -25,12 +25,6 @@ function createAdminHtml() {
       padding: 20px;
       margin-bottom: 20px;
     }
-    .response-table {
-      margin-top: 20px;
-    }
-    .form-group {
-      margin-bottom: 15px;
-    }
     .header-container {
       background-color: #075e54;
       color: white;
@@ -58,21 +52,13 @@ function createAdminHtml() {
       right: 20px;
       z-index: 1100;
     }
-    /* Estilos para la mini consola */
-    #consoleLog {
-      height: 200px;
-      overflow-y: scroll;
+    /* Estilos para el Console Log y Chat */
+    #consoleLog, #botChat {
+      height: 250px;
+      overflow-y: auto;
       border: 1px solid #ccc;
       padding: 10px;
       background: #f8f9fa;
-    }
-    /* Estilos para el chat en tiempo real */
-    #botChat {
-      height: 300px;
-      overflow-y: scroll;
-      border: 1px solid #ccc;
-      padding: 10px;
-      background: #fff;
     }
   </style>
 </head>
@@ -88,91 +74,67 @@ function createAdminHtml() {
   <div class="toast-container" id="toastContainer"></div>
 
   <div class="container">
+    <!-- Encabezado -->
     <div class="header-container">
-      <h1 class="text-center mb-0"><i class="bi bi-whatsapp me-2"></i>Panel de Administración</h1>
+      <h1 class="text-center mb-0">
+        <i class="bi bi-whatsapp me-2"></i>Panel de Administración
+      </h1>
     </div>
     
-    <div class="row">
-      <div class="col-12 text-center mb-4">
-        <a href="/" class="btn btn-outline-secondary">
-          <i class="bi bi-arrow-left me-2"></i>Volver a la página principal
-        </a>
-        <button id="reloadBtn" class="btn btn-info ms-2">
-          <i class="bi bi-arrow-clockwise me-2"></i>Recargar respuestas
+    <!-- Formulario para agregar nueva respuesta -->
+    <div class="admin-panel">
+      <h3><i class="bi bi-plus-circle me-2"></i>Agregar nueva respuesta</h3>
+      <form id="addResponseForm">
+        <div class="mb-3">
+          <label for="trigger" class="form-label">Cuando el usuario escriba:</label>
+          <input type="text" class="form-control" id="trigger" placeholder="Ej: hola, información, precios, etc." required>
+        </div>
+        <div class="mb-3">
+          <label for="response" class="form-label">El bot responderá:</label>
+          <textarea class="form-control" id="response" rows="3" placeholder="Escribe la respuesta que dará el bot..." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-save me-2"></i>Guardar respuesta
         </button>
-      </div>
+      </form>
     </div>
     
-    <!-- Panel de agregar respuestas -->
+    <!-- Paneles en línea: Console Log y Mensajería en Tiempo Real -->
     <div class="row">
-      <div class="col-md-12">
-        <div class="admin-panel">
-          <h3><i class="bi bi-plus-circle me-2"></i>Agregar nueva respuesta</h3>
-          <form id="addResponseForm">
-            <div class="form-group">
-              <label for="trigger">Cuando el usuario escriba:</label>
-              <input type="text" class="form-control" id="trigger" placeholder="Ej: hola, información, precios, etc." required>
-            </div>
-            <div class="form-group">
-              <label for="response">El bot responderá:</label>
-              <textarea class="form-control" id="response" rows="3" placeholder="Escribe la respuesta que dará el bot..." required></textarea>
-            </div>
-            <button type="submit" class="btn btn-success">
-              <i class="bi bi-save me-2"></i>Guardar respuesta
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Tabla de respuestas existentes -->
-    <div class="row">
-      <div class="col-md-12">
-        <div class="admin-panel response-table">
-          <h3><i class="bi bi-list-check me-2"></i>Respuestas configuradas</h3>
-          <div class="table-responsive">
-            <table class="table table-striped">
-              <thead class="table-dark">
-                <tr>
-                  <th>Cuando el usuario escriba</th>
-                  <th>El bot responderá</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="responsesTable">
-                <!-- Las respuestas se cargarán aquí -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Panel de Console Log en tiempo real -->
-    <div class="row">
-      <div class="col-md-12">
+      <div class="col-md-6">
         <div class="admin-panel">
           <h3><i class="bi bi-terminal me-2"></i>Console Log</h3>
-          <div id="consoleLog">
-            <!-- Se mostrarán mensajes de log en tiempo real -->
-          </div>
+          <div id="consoleLog"></div>
         </div>
       </div>
-    </div>
-    
-    <!-- Panel de Mensajería en Tiempo Real -->
-    <div class="row">
-      <div class="col-md-12">
+      <div class="col-md-6">
         <div class="admin-panel">
           <h3><i class="bi bi-chat-dots me-2"></i>Mensajería en Tiempo Real</h3>
-          <div id="botChat">
-            <!-- Se mostrarán los mensajes de chat -->
-          </div>
+          <div id="botChat"></div>
           <div class="input-group mt-2">
             <input type="text" id="chatInput" class="form-control" placeholder="Escribe un mensaje para el bot...">
             <button id="sendChatBtn" class="btn btn-primary">Enviar</button>
           </div>
         </div>
+      </div>
+    </div>
+    
+    <!-- Panel de Respuestas Configuradas -->
+    <div class="admin-panel">
+      <h3><i class="bi bi-list-check me-2"></i>Respuestas configuradas</h3>
+      <div class="table-responsive">
+        <table class="table table-striped">
+          <thead class="table-dark">
+            <tr>
+              <th>Cuando el usuario escriba</th>
+              <th>El bot responderá</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="responsesTable">
+            <!-- Se cargarán las respuestas -->
+          </tbody>
+        </table>
       </div>
     </div>
     
@@ -182,16 +144,14 @@ function createAdminHtml() {
   <script>
     // Conectar a Socket.IO
     const socket = io();
-    
-    // Elementos del DOM para respuestas y notificaciones
+
+    // Elementos del DOM
     const addResponseForm = document.getElementById('addResponseForm');
     const triggerInput = document.getElementById('trigger');
     const responseInput = document.getElementById('response');
     const responsesTable = document.getElementById('responsesTable');
     const loadingOverlay = document.getElementById('loadingOverlay');
     const toastContainer = document.getElementById('toastContainer');
-
-    // Elementos para Console Log y Chat
     const consoleLogDiv = document.getElementById('consoleLog');
     const botChatDiv = document.getElementById('botChat');
     const chatInput = document.getElementById('chatInput');
@@ -201,7 +161,7 @@ function createAdminHtml() {
     function toggleLoading(show) {
       loadingOverlay.style.display = show ? 'flex' : 'none';
     }
-    
+
     // Función para mostrar notificaciones (toast)
     function showToast(message, type = 'success') {
       const toastId = 'toast-' + Date.now();
@@ -216,35 +176,26 @@ function createAdminHtml() {
           </div>
         </div>
       \`;
-      
       toastContainer.insertAdjacentHTML('beforeend', toastHtml);
       const toastElement = document.getElementById(toastId);
-      
-      // Mostrar el toast
       toastElement.classList.add('show');
-      
-      // Remover después de 5 segundos
       setTimeout(() => {
         if (toastElement && toastElement.parentNode) {
           toastElement.parentNode.removeChild(toastElement);
         }
       }, 5000);
     }
-    
-    // Cargar respuestas existentes al iniciar
+
+    // Cargar respuestas existentes
     toggleLoading(true);
     socket.emit('getResponses');
-    
-    // Recibir respuestas del servidor
     socket.on('responsesList', (responses) => {
       toggleLoading(false);
       responsesTable.innerHTML = '';
-      
       if (!responses || Object.keys(responses).length === 0) {
         responsesTable.innerHTML = '<tr><td colspan="3" class="text-center">No hay respuestas configuradas</td></tr>';
         return;
       }
-      
       for (const [trigger, response] of Object.entries(responses)) {
         const row = document.createElement('tr');
         row.innerHTML = \`
@@ -264,8 +215,6 @@ function createAdminHtml() {
         \`;
         responsesTable.appendChild(row);
       }
-      
-      // Listener para botón "Editar"
       document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const trigger = e.target.closest('.edit-btn').getAttribute('data-trigger');
@@ -275,8 +224,6 @@ function createAdminHtml() {
           addResponseForm.scrollIntoView({ behavior: 'smooth' });
         });
       });
-      
-      // Listener para botón "Eliminar"
       document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const trigger = e.target.closest('.delete-btn').getAttribute('data-trigger');
@@ -286,8 +233,6 @@ function createAdminHtml() {
           }
         });
       });
-      
-      // Listener para botón "Respuesta Rápida"
       document.querySelectorAll('.quick-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const trigger = e.target.closest('.quick-btn').getAttribute('data-trigger');
@@ -298,7 +243,7 @@ function createAdminHtml() {
         });
       });
     });
-    
+
     // Enviar nueva respuesta
     addResponseForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -309,15 +254,15 @@ function createAdminHtml() {
         socket.emit('addResponse', { trigger, response });
       }
     });
-    
+
     // Botón de recarga forzada
     document.getElementById('reloadBtn').addEventListener('click', () => {
       toggleLoading(true);
       socket.emit('forceReload');
       console.log('Solicitando recarga forzada de respuestas');
     });
-    
-    // Confirmar acciones de agregar o eliminar respuestas
+
+    // Confirmar acciones
     socket.on('responseAdded', () => {
       toggleLoading(false);
       showToast('Respuesta guardada correctamente');
@@ -325,41 +270,38 @@ function createAdminHtml() {
       responseInput.value = '';
       socket.emit('getResponses');
     });
-    
     socket.on('responseDeleted', () => {
       toggleLoading(false);
       showToast('Respuesta eliminada correctamente');
       socket.emit('getResponses');
     });
-    
     socket.on('quickResponseAdded', () => {
       showToast('Respuesta rápida agregada correctamente', 'success');
       socket.emit('getResponses');
     });
-    
     socket.on('error', (msg) => {
       toggleLoading(false);
       showToast(msg, 'error');
       console.error('Error del servidor:', msg);
     });
-    
-    // Actualización en tiempo real de Console Log
+
+    // Escuchar eventos para Console Log
     socket.on('consoleLog', (msg) => {
       const entry = document.createElement('div');
       entry.textContent = msg;
       consoleLogDiv.appendChild(entry);
       consoleLogDiv.scrollTop = consoleLogDiv.scrollHeight;
     });
-    
-    // Actualización en tiempo real de Mensajería (chat)
+
+    // Escuchar eventos para Mensajería en tiempo real
     socket.on('botChatMessage', (data) => {
       const entry = document.createElement('div');
       entry.innerHTML = \`<strong>\${data.from}:</strong> \${data.message}\`;
       botChatDiv.appendChild(entry);
       botChatDiv.scrollTop = botChatDiv.scrollHeight;
     });
-    
-    // Enviar mensaje desde el chat al servidor (para que el admin enseñe al bot, o envíe a un usuario)
+
+    // Enviar mensaje desde el chat al servidor
     sendChatBtn.addEventListener('click', () => {
       const message = chatInput.value.trim();
       if (message) {
@@ -367,7 +309,7 @@ function createAdminHtml() {
         chatInput.value = '';
       }
     });
-    
+
     // Mantener la conexión activa
     setInterval(() => {
       socket.emit('ping');
@@ -376,12 +318,10 @@ function createAdminHtml() {
 </body>
 </html>`;
 
-  // Crear carpeta public si no existe
   if (!fs.existsSync(config.paths.public)) {
     fs.mkdirSync(config.paths.public, { recursive: true });
   }
   
-  // Guardar el HTML de administración
   fs.writeFileSync(path.join(config.paths.public, config.files.adminHtml), adminHtmlContent);
   console.log('Archivo admin.html creado correctamente');
 }
