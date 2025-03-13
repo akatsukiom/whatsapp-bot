@@ -599,7 +599,7 @@ class WhatsAppManager {
     const isGroup = message.from.endsWith('@g.us');
     utils.log(`Es mensaje de grupo: ${isGroup}`, 'info');
     
-    // Si es un mensaje multimedia
+    // Si es un mensaje multimedia, se delega a handleMediaMessage
     if (message.hasMedia) {
       await this.handleMediaMessage(message, client);
       return;
@@ -698,6 +698,19 @@ class WhatsAppManager {
     }
   }
   
+  // Manejar mensajes multimedia
+  async handleMediaMessage(message, client) {
+    try {
+      await client.sendMessage(
+        message.from,
+        'Estimado/a, agradezco su interés en obtener más información. Por favor, siéntase en la libertad de comunicarse con nosotros al número 4961260597 para que podamos brindarle la información que necesita de manera oportuna y precisa. Quedamos a su disposición para cualquier consulta adicional que pueda surgir. ¡Esperamos poder asistirle pronto!'
+      );
+    } catch (error) {
+      utils.log(`Error al manejar mensaje multimedia: ${error.message}`, 'error');
+      await client.sendMessage(message.from, "Lo siento, ocurrió un problema al procesar tu archivo multimedia.");
+    }
+  }
+  
   // Reenviar mensaje al administrador
   async forwardToAdmin(message, client, isGroup, errorInfo = '') {
     try {
@@ -747,7 +760,7 @@ class WhatsAppManager {
     }
   }
   
-  // Nueva función para limpiar mensajes pendientes antiguos
+  // Limpiar mensajes pendientes antiguos
   cleanOldPendingResponses() {
     if (!this.pendingResponses) return;
     
@@ -769,23 +782,6 @@ class WhatsAppManager {
     
     if (oldResponseIds.length > 0) {
       utils.log(`Se eliminaron ${oldResponseIds.length} mensajes pendientes antiguos`, 'info');
-    }
-  }
-  
-  // Manejar mensajes multimedia
-  async handleMediaMessage(message, client) {
-    try {
-      const media = await message.downloadMedia();
-      
-      // Por defecto, simplemente confirmamos la recepción del archivo
-      const response = "He recibido tu archivo multimedia. ¿En qué puedo ayudarte?";
-      client.sendMessage(message.from, response);
-      
-      // Aquí se podría implementar un análisis más sofisticado de los archivos
-      // Por ejemplo, usando OCR para imágenes, o transcripción para audio
-    } catch (error) {
-      utils.log(`Error al manejar mensaje multimedia: ${error.message}`, 'error');
-      client.sendMessage(message.from, "Lo siento, no pude procesar ese archivo multimedia.");
     }
   }
   
