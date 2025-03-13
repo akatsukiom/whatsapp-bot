@@ -257,12 +257,15 @@ function createAdminHtml() {
             <button class="btn btn-sm btn-danger delete-btn" data-trigger="\${trigger}">
               <i class="bi bi-trash-fill"></i> Eliminar
             </button>
+            <button class="btn btn-sm btn-info quick-btn" data-trigger="\${trigger}">
+              <i class="bi bi-lightning-charge-fill"></i> Respuesta Rápida
+            </button>
           </td>
         \`;
         responsesTable.appendChild(row);
       }
       
-      // Agregar event listeners a los botones de editar y eliminar
+      // Listener para botón "Editar"
       document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const trigger = e.target.closest('.edit-btn').getAttribute('data-trigger');
@@ -273,12 +276,24 @@ function createAdminHtml() {
         });
       });
       
+      // Listener para botón "Eliminar"
       document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const trigger = e.target.closest('.delete-btn').getAttribute('data-trigger');
           if (confirm('¿Estás seguro de eliminar esta respuesta?')) {
             toggleLoading(true);
             socket.emit('deleteResponse', trigger);
+          }
+        });
+      });
+      
+      // Listener para botón "Respuesta Rápida"
+      document.querySelectorAll('.quick-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const trigger = e.target.closest('.quick-btn').getAttribute('data-trigger');
+          const response = responses[trigger];
+          if (confirm('¿Desea agregar esta respuesta como respuesta rápida?')) {
+            socket.emit('addQuickResponse', { trigger, response });
           }
         });
       });
@@ -314,6 +329,11 @@ function createAdminHtml() {
     socket.on('responseDeleted', () => {
       toggleLoading(false);
       showToast('Respuesta eliminada correctamente');
+      socket.emit('getResponses');
+    });
+    
+    socket.on('quickResponseAdded', () => {
+      showToast('Respuesta rápida agregada correctamente', 'success');
       socket.emit('getResponses');
     });
     

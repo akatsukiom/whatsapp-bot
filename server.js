@@ -337,7 +337,29 @@ function setupServer() {
       }
     });
     
-    // Ping para mantener viva la conexión
+    // Evento para agregar respuesta rápida
+    socket.on('addQuickResponse', ({ trigger, response }) => {
+      try {
+        console.log(`Agregando respuesta rápida: "${trigger}" -> "${response}"`);
+        if (global.whatsappManager) {
+          const success = global.whatsappManager.updateResponse(trigger, response);
+          if (success) {
+            console.log(`Respuesta rápida agregada: "${trigger}" -> "${response}"`);
+            socket.emit('quickResponseAdded');
+            io.emit('responsesUpdated');
+          } else {
+            socket.emit('error', 'Error al agregar la respuesta rápida');
+          }
+        } else {
+          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+        }
+      } catch (err) {
+        console.error('Error al agregar respuesta rápida:', err);
+        socket.emit('error', 'No se pudo agregar la respuesta rápida: ' + err.message);
+      }
+    });
+    
+    // Evento de ping para mantener viva la conexión
     socket.on('ping', () => {
       // Este evento simplemente mantiene la conexión activa
     });
