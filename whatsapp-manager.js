@@ -38,6 +38,75 @@ class WhatsAppManager {
     console.log('Datos de aprendizaje guardados correctamente');
   }
   
+  // Función para calcular la distancia de Levenshtein (cuánto se parecen dos palabras)
+  levenshteinDistance(a, b) {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+
+    const matrix = [];
+
+    // Incrementar a lo largo de la primera columna de cada fila
+    for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+    }
+
+    // Incrementar a lo largo de la primera fila de cada columna
+    for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    // Rellenar el resto de la matriz
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // sustitución
+            matrix[i][j - 1] + 1,     // inserción
+            matrix[i - 1][j] + 1      // eliminación
+          );
+        }
+      }
+    }
+
+    return matrix[b.length][a.length];
+  }
+
+  // Función para encontrar la palabra clave más similar
+  findMostSimilarKey(text, threshold = 0.7) {
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    // Dividir el texto del mensaje en palabras
+    const words = text.toLowerCase().split(/\s+/);
+    
+    for (const key in this.learningDatabase.responses) {
+      // Para cada palabra clave en nuestra base de datos
+      const keyWords = key.toLowerCase().split(/\s+/);
+      
+      for (const keyWord of keyWords) {
+        if (keyWord.length < 4) continue; // Ignorar palabras muy cortas
+        
+        for (const word of words) {
+          if (word.length < 4) continue; // Ignorar palabras muy cortas
+          
+          // Calcular la similitud como 1 - (distancia / longitud máxima)
+          const maxLength = Math.max(keyWord.length, word.length);
+          const distance = this.levenshteinDistance(keyWord, word);
+          const similarity = 1 - (distance / maxLength);
+          
+          if (similarity > threshold && similarity > bestScore) {
+            bestMatch = key;
+            bestScore = similarity;
+          }
+        }
+      }
+    }
+    
+    return bestMatch;
+  }
+  
   // Emitir el estado actual de todas las cuentas
   emitCurrentStatus() {
     if (!this.io) return;
@@ -361,10 +430,22 @@ class WhatsAppManager {
       response = this.learningDatabase.responses[messageText];
     } else {
       // Buscar coincidencia parcial
+      let foundPartialMatch = false;
       for (const key in this.learningDatabase.responses) {
         if (messageText.includes(key)) {
           response = this.learningDatabase.responses[key];
+          foundPartialMatch = true;
           break;
+        }
+      }
+      
+      // Si no se encontró coincidencia parcial, buscar similar con Levenshtein
+      if (!foundPartialMatch) {
+        const mostSimilarKey = this.findMostSimilarKey(messageText);
+        if (mostSimilarKey) {
+          response = this.learningDatabase.responses[mostSimilarKey];
+          // Registrar en el log cuando se usa una coincidencia similar
+          console.log(`Coincidencia similar encontrada: "${messageText}" -> "${mostSimilarKey}"`);
         }
       }
     }
