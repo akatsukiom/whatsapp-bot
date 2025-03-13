@@ -37,27 +37,39 @@ class WhatsAppManager {
     console.log('Datos de aprendizaje guardados correctamente');
   }
   
-  // Emitir el estado actual de todas las cuentas
-  emitCurrentStatus() {
-    if (!this.io) return;
+// Emitir el estado actual de todas las cuentas
+emitCurrentStatus() {
+  if (!this.io) return;
+  
+  this.accounts.forEach(account => {
+    let status = 'disconnected';
     
-    this.accounts.forEach(account => {
-      let status = 'disconnected';
+    try {
       if (account.client && account.client.info) {
         status = 'ready';
-      } else if (account.client && account.client.authStrategy && account.client.authStrategy.isAuthenticated()) {
-        status = 'authenticated';
+      } else if (account.client && account.client.authStrategy) {
+        // Comprobamos si existe una sesión de autenticación sin llamar al método
+        const authStrategy = account.client.authStrategy;
+        // La verificación de autenticación depende de la versión de whatsapp-web.js
+        // Intentamos métodos alternativos para determinar si está autenticado
+        if (authStrategy._authenticated || 
+            (typeof authStrategy.isAuthenticated === 'boolean' && authStrategy.isAuthenticated) ||
+            fs.existsSync(`${config.paths.sessions}/${account.sessionName}/session`)) {
+          status = 'authenticated';
+        }
       }
-      
-      this.io.emit('status', {
-        sessionName: account.sessionName,
-        phoneNumber: account.phoneNumber,
-        status: status,
-        active: account.active
-      });
+    } catch (error) {
+      console.error(`Error al obtener estado de ${account.phoneNumber}:`, error.message);
+    }
+    
+    this.io.emit('status', {
+      sessionName: account.sessionName,
+      phoneNumber: account.phoneNumber,
+      status: status,
+      active: account.active
     });
-  }
-  
+  });
+}
   // Agregar una nueva cuenta
   addAccount(phoneNumber, sessionName) {
     const sessionFolder = `${config.paths.sessions}/${sessionName}`;
