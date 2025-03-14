@@ -1,0 +1,5 @@
+# Crear o editar el archivo .gitignore
+echo "node_modules/" >> .gitignore
+echo ".local-chromium/" >> .gitignore
+echo "*.exe" >> .gitignore
+echo "*.dll" >> .gitignore
