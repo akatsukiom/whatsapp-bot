@@ -251,11 +251,11 @@ function createAdminHtml() {
     function showToast(message, type = 'success') {
       const toastId = 'toast-' + Date.now();
       const toastHtml = \`
-        <div id="\${toastId}" class="toast align-items-center text-white bg-\${type === 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
+        <div id="\${"$"}{toastId}" class="toast align-items-center text-white bg-\${"$"}{type === 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
           <div class="d-flex">
             <div class="toast-body">
-              <i class="bi bi-\${type === 'success' ? 'check-circle' : 'exclamation-circle'}-fill me-2"></i>
-              \${message}
+              <i class="bi bi-\${"$"}{type === 'success' ? 'check-circle' : 'exclamation-circle'}-fill me-2"></i>
+              \${"$"}{message}
             </div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
           </div>
@@ -298,7 +298,7 @@ function createAdminHtml() {
 
     // Confirmar actualización
     socket.on('aiConfigUpdated', () => {
-    toggleLoading(false);
+      toggleLoading(false);
       showToast('Configuración de IA actualizada', 'success');
     });
 
@@ -316,21 +316,21 @@ function createAdminHtml() {
       for (const [trigger, response] of Object.entries(responses)) {
         const row = document.createElement('tr');
         
-        row.innerHTML = `
-          <td>${trigger}</td>
-          <td>${response}</td>
+        row.innerHTML = \`
+          <td>\${"$"}{trigger}</td>
+          <td>\${"$"}{response}</td>
           <td>
-            <button class="btn btn-sm btn-warning edit-btn" data-trigger="${trigger}">
+            <button class="btn btn-sm btn-warning edit-btn" data-trigger="\${"$"}{trigger}">
               <i class="bi bi-pencil-fill"></i> Editar
             </button>
-            <button class="btn btn-sm btn-danger delete-btn" data-trigger="${trigger}">
+            <button class="btn btn-sm btn-danger delete-btn" data-trigger="\${"$"}{trigger}">
               <i class="bi bi-trash-fill"></i> Eliminar
             </button>
-            <button class="btn btn-sm btn-info quick-btn" data-trigger="${trigger}">
+            <button class="btn btn-sm btn-info quick-btn" data-trigger="\${"$"}{trigger}">
               <i class="bi bi-lightning-charge-fill"></i> Respuesta Rápida
             </button>
           </td>
-        `;
+        \`;
         
         responsesTable.appendChild(row);
       }
@@ -401,7 +401,7 @@ function createAdminHtml() {
     
     socket.on('responsesImported', (data) => {
       toggleLoading(false);
-      showToast(`${data.count} respuestas importadas correctamente`, 'success');
+      showToast(\`\${"$"}{data.count} respuestas importadas correctamente\`, 'success');
       socket.emit('getResponses');
     });
     
@@ -422,7 +422,7 @@ function createAdminHtml() {
     // Escuchar eventos para Mensajería en tiempo real
     socket.on('botChatMessage', (data) => {
       const entry = document.createElement('div');
-      entry.innerHTML = `<strong>${data.from}:</strong> ${data.message}`;
+      entry.innerHTML = \`<strong>\${"$"}{data.from}:</strong> \${"$"}{data.message}\`;
       botChatDiv.appendChild(entry);
       botChatDiv.scrollTop = botChatDiv.scrollHeight;
     });
@@ -434,7 +434,7 @@ function createAdminHtml() {
         socket.emit('adminChatMessage', message);
         // También agregar el mensaje a la interfaz
         const entry = document.createElement('div');
-        entry.innerHTML = `<strong>Tú:</strong> ${message}`;
+        entry.innerHTML = \`<strong>Tú:</strong> \${"$"}{message}\`;
         botChatDiv.appendChild(entry);
         botChatDiv.scrollTop = botChatDiv.scrollHeight;
         // Limpiar campo de entrada
@@ -443,8 +443,9 @@ function createAdminHtml() {
     });
     
     // También permitir enviar con Enter
-    chatInput.addEventListener('keypress', (e) => {
+    chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
+        e.preventDefault();
         sendChatBtn.click();
       }
     });
@@ -462,7 +463,7 @@ function createAdminHtml() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `respuestas_whatsapp_${new Date().toISOString().slice(0,10)}.json`;
+        a.download = \`respuestas_whatsapp_\${"$"}{new Date().toISOString().slice(0,10)}.json\`;
         document.body.appendChild(a);
         a.click();
         
