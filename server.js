@@ -216,7 +216,7 @@ socket.on('updateAIConfig', (data) => {
     console.log('Actualizando configuración de IA');
     
     // Solo actualizar la API key si se proporciona una nueva
-    if (data.apiKey && data.apiKey !== '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') {
+    if (data.apiKey && data.apiKey !== '') {
       config.openai.apiKey = data.apiKey;
     }
     
@@ -235,7 +235,7 @@ socket.on('updateAIConfig', (data) => {
     socket.emit('error', 'Error al actualizar configuración de IA: ' + err.message);
   }
 });
-    
+
 
     // Agregar nueva cuenta
     socket.on('addAccount', (data) => {
