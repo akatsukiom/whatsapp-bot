@@ -378,97 +378,95 @@ class WhatsAppManager {
 
     // En el evento 'disconnected'
     client.on('disconnected', (reason) => {
-
         // Verificar si la desconexión es por cierre de sesión explícito
-  const isIntentionalLogout = reason.includes('logout') || reason.includes('user request');
-      utils.log(`Cliente ${phoneNumber} desconectado: ${reason}`, 'warning');
-      
-      // Guardar el mensaje de error para mostrar en la interfaz
-      const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
-      if (accountObj) {
-        accountObj.lastError = reason;
-        accountObj.status = 'disconnected';
-      }
-      
-  // Si es un cierre de sesión intencional, no programar reconexión automática
-    if (isIntentionalLogout) {
-      accountObj.everConnected = false; // Restablecer la bandera
-      utils.log(`Cierre de sesión intencional para ${phoneNumber}, no se intentará reconectar automáticamente`, 'info');
-      
-      // Eliminar carpeta de sesión si existe
-      const sessionDir = `${config.paths.sessions}/${sessionName}`;
-      if (fs.existsSync(sessionDir)) {
-        try {
-          fs.rmdirSync(sessionDir, { recursive: true });
-          utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
-        } catch (error) {
-          utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
-        }
-      }
-      
-
-
- // Emitir estado y salir de esta función
-      this.io.emit('status', {
-        sessionName,
-        phoneNumber,
-        status: 'disconnected',
-        reason,
-        detail: reason,
-        active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
-      });
-
-   
-   return; // Agregar esta línea para salir de la función
-}
-
-      // Implementar un reintento exponencial
-      const retryCount = accountObj ? (accountObj.retryCount || 0) : 0;
-      const retryDelay = Math.min(30000, 5000 * Math.pow(1.5, retryCount));
-      
-      if (accountObj) {
-        accountObj.retryCount = retryCount + 1;
-      }
-      
-      if (reason.includes('banned') || reason.includes('timeout')) {
-        utils.log(`La cuenta ${phoneNumber} parece estar baneada, cambiando a otra cuenta...`, 'warning');
-        this.switchToNextAccount();
-      }
-      
-      utils.log(`Programando reconexión para ${phoneNumber} en ${retryDelay/1000} segundos`, 'info');
-      
-      setTimeout(() => {
-        utils.log(`Intentando reconectar cliente ${phoneNumber}...`, 'info');
+        const isIntentionalLogout = reason.includes('logout') || reason.includes('user request');
+        utils.log(`Cliente ${phoneNumber} desconectado: ${reason}`, 'warning');
         
-        // Usar try/catch para capturar errores durante la reconexión
-        try {
-          // Guardar timestamp del intento de reconexión
+        // Guardar el mensaje de error para mostrar en la interfaz
+        const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
+        if (accountObj) {
+          accountObj.lastError = reason;
+          accountObj.status = 'disconnected';
+        }
+        
+        // Si es un cierre de sesión intencional, no programar reconexión automática
+        if (isIntentionalLogout) {
           if (accountObj) {
-            accountObj.lastReconnectAttempt = Date.now();
+            accountObj.everConnected = false; // Restablecer la bandera
+          }
+          utils.log(`Cierre de sesión intencional para ${phoneNumber}, no se intentará reconectar automáticamente`, 'info');
+          
+          // Eliminar carpeta de sesión si existe
+          const sessionDir = `${config.paths.sessions}/${sessionName}`;
+          if (fs.existsSync(sessionDir)) {
+            try {
+              fs.rmdirSync(sessionDir, { recursive: true });
+              utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+            } catch (error) {
+              utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
+            }
           }
           
-          client.initialize().catch(err => {
-            utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
-            if (accountObj) {
-              accountObj.lastError = err.message;
-              // Emitir estado actualizado con el error
-              this.io.emit('status', {
-                sessionName,
-                phoneNumber,
-                status: 'error',
-                reason: err.message,
-                detail: err.message,
-                active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
-              });
-            }
+          // Emitir estado y salir de esta función
+          this.io.emit('status', {
+            sessionName,
+            phoneNumber,
+            status: 'disconnected',
+            reason,
+            detail: reason,
+            active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
           });
-        } catch (error) {
-          utils.log(`Excepción al intentar reconectar ${phoneNumber}: ${error.message}`, 'error');
-          if (accountObj) {
-            accountObj.lastError = error.message;
-          }
+          
+          return; // Salir de la función
         }
-      }, retryDelay);
+
+        // Implementar un reintento exponencial
+        const retryCount = accountObj ? (accountObj.retryCount || 0) : 0;
+        const retryDelay = Math.min(30000, 5000 * Math.pow(1.5, retryCount));
+        
+        if (accountObj) {
+          accountObj.retryCount = retryCount + 1;
+        }
+        
+        if (reason.includes('banned') || reason.includes('timeout')) {
+          utils.log(`La cuenta ${phoneNumber} parece estar baneada, cambiando a otra cuenta...`, 'warning');
+          this.switchToNextAccount();
+        }
+        
+        utils.log(`Programando reconexión para ${phoneNumber} en ${retryDelay/1000} segundos`, 'info');
+        
+        setTimeout(() => {
+          utils.log(`Intentando reconectar cliente ${phoneNumber}...`, 'info');
+          
+          // Usar try/catch para capturar errores durante la reconexión
+          try {
+            // Guardar timestamp del intento de reconexión
+            if (accountObj) {
+              accountObj.lastReconnectAttempt = Date.now();
+            }
+            
+            client.initialize().catch(err => {
+              utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
+              if (accountObj) {
+                accountObj.lastError = err.message;
+                // Emitir estado actualizado con el error
+                this.io.emit('status', {
+                  sessionName,
+                  phoneNumber,
+                  status: 'error',
+                  reason: err.message,
+                  detail: err.message,
+                  active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
+                });
+              }
+            });
+          } catch (error) {
+            utils.log(`Excepción al intentar reconectar ${phoneNumber}: ${error.message}`, 'error');
+            if (accountObj) {
+              accountObj.lastError = error.message;
+            }
+          }
+        }, retryDelay);
     });
 
     // Inicializamos
@@ -778,7 +776,7 @@ class WhatsAppManager {
             await accountToReconnect.client.initialize();
             client.sendMessage(message.from, `✅ Reconexión iniciada para ${accountToReconnect.phoneNumber}`);
           } catch (error) {
-            client.sendMessage(message.from, `❌ Error al reconectar: ${error.message}`);
+        client.sendMessage(message.from, `❌ Error al reconectar: ${error.message}`);
           }
         } else {
           client.sendMessage(message.from, 'No se pudo reconectar la cuenta: cliente no inicializado');
@@ -819,7 +817,7 @@ class WhatsAppManager {
       return;
     }
 
-// Procesar mensaje de grupo
+    // Procesar mensaje de grupo
     utils.log('Procesando mensaje de grupo...', 'info');
 
     if (!this.learningDatabase || !this.learningDatabase.responses) {
@@ -893,34 +891,35 @@ class WhatsAppManager {
         }
       }
     } else {
-       // Intenta generar una respuesta con IA antes de reenviar al administrador
-    utils.log('No se encontró respuesta en la base de conocimiento, consultando a la IA...', 'info');
+      // Intenta generar una respuesta con IA antes de reenviar al administrador
+      utils.log('No se encontró respuesta en la base de conocimiento, consultando a la IA...', 'info');
 
-     try {
-      // Genera respuesta con OpenAI
-      const aiResponse = await aiHandler.generateResponse(messageText);
-      
-      utils.log(`Respuesta generada por IA: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
-      
-      // Enviar la respuesta generada por la IA
-      const clientToUse = this.activeAccount ? this.activeAccount.client : client;
-      await clientToUse.sendMessage(message.from, aiResponse);
-      
-      // Emitir respuesta al panel
-      if (this.io) {
-        this.io.emit('botChatMessage', {
-          from: 'BOT-AI',
-          message: aiResponse
-        });
+      try {
+        // Genera respuesta con OpenAI
+        const aiResponse = await aiHandler.generateResponse(messageText);
+        
+        utils.log(`Respuesta generada por IA: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
+        
+        // Enviar la respuesta generada por la IA
+        const clientToUse = this.activeAccount ? this.activeAccount.client : client;
+        await clientToUse.sendMessage(message.from, aiResponse);
+        
+        // Emitir respuesta al panel
+        if (this.io) {
+          this.io.emit('botChatMessage', {
+            from: 'BOT-AI',
+            message: aiResponse
+          });
+        }
+        
+        // También reenviar al administrador para que pueda verificar y posiblemente
+        // guardar la respuesta en la base de conocimiento
+        this.forwardToAdmin(message, client, isGroup, 'Respuesta generada por IA');
+        
+      } catch (aiError) {
+        utils.log(`Error al consultar a la IA: ${aiError.message}`, 'error');
+        this.forwardToAdmin(message, client, isGroup, 'Error al generar respuesta con IA');
       }
-      
-      // También reenviar al administrador para que pueda verificar y posiblemente
-      // guardar la respuesta en la base de conocimiento
-      this.forwardToAdmin(message, client, isGroup, 'Respuesta generada por IA');
-      
-    } catch (aiError) {
-      utils.log(`Error al consultar a la IA: ${aiError.message}`, 'error');
-      this.forwardToAdmin(message, client, isGroup, 'Error al generar respuesta con IA');
     }
   }
 

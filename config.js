@@ -6,7 +6,7 @@ module.exports = {
     port: process.env.PORT || 3000
   },
 
-// Añadir en config.js
+  // Configuración de OpenAI
   openai: {
     apiKey: process.env.OPENAI_API_KEY || 'tu-api-key-aquí',
     model: 'gpt-3.5-turbo',
@@ -16,7 +16,6 @@ module.exports = {
     privateNumber: '4961260597', // Número al que redirigir
     privateMessage: "Gracias por tu consulta. Para brindarte una atención personalizada, por favor envíame un mensaje al privado: 4961260597"
   },
-
   
   // Configuración de WhatsApp
   whatsapp: {
@@ -37,7 +36,7 @@ module.exports = {
     ],
 
     // Números de administradores (pueden controlar el bot con comandos tipo !learn, !switch, etc.)
-    adminNumbers: ['521234567890@c.us'],
+    adminNumbers: ['521234567890@c.us'], // Reemplaza con tu número real
 
     // Mensaje de redirección para chats privados
     redirectMessage: "Este es un bot automático. Por favor, envía tus mensajes al número 4961260597 para recibir atención personalizada. Gracias.",
@@ -61,20 +60,20 @@ module.exports = {
     }
   },
 
-  // Rutas de archivos y carpetas
+  // Rutas de archivos y carpetas (unificadas para mejor coherencia)
   paths: {
-    // Montar tu carpeta "public" local
+    // Carpeta pública para archivos estáticos
     public: './public',
 
-    // Aquí guardaremos el archivo learning-data.json en el volumen persistente (Railway: /data)
-    learningData: '/data/learning-data.json',
+    // Archivos de datos de aprendizaje - usando ./data para coherencia
+    learningData: './data/learning-data.json',
 
-    // Carpeta para almacenar sesiones de WhatsApp en el volumen persistente
-    sessions: '/data/sessions',
+    // Carpeta para almacenar sesiones de WhatsApp
+    sessions: './data/sessions',
 
-    // Opcionales (logs, backups) en carpetas locales o en /data si quieres persistirlos
-    logs: './logs',
-    backups: './backups'
+    // Logs y backups en la misma estructura
+    logs: './data/logs',
+    backups: './data/backups'
   },
 
   // Nombres de archivos
@@ -95,7 +94,7 @@ module.exports = {
       "gracias": "De nada, estoy aquí para ayudarte.",
       "adiós": "¡Hasta pronto! Fue un placer atenderte.",
       "información": "Claro, con gusto te proporciono la información que necesites.",
-      // ... agrega más respuestas por defecto si lo deseas
+      // Añadir más respuestas por defecto si lo deseas
     },
     mediaHandlers: {}
   },

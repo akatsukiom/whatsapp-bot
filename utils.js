@@ -10,13 +10,25 @@ function ensureDirectories() {
   // Crear carpeta public si no existe
   if (!fs.existsSync(config.paths.public)) {
     fs.mkdirSync(config.paths.public, { recursive: true });
-    console.log(`Carpeta ${config.paths.public} creada correctamente`);
+    log(`Carpeta ${config.paths.public} creada correctamente`, 'success');
   }
   
   // Crear carpeta sessions si no existe
   if (!fs.existsSync(config.paths.sessions)) {
     fs.mkdirSync(config.paths.sessions, { recursive: true });
-    console.log(`Carpeta ${config.paths.sessions} creada correctamente`);
+    log(`Carpeta ${config.paths.sessions} creada correctamente`, 'success');
+  }
+  
+  // Crear carpeta para logs
+  if (!fs.existsSync(config.paths.logs)) {
+    fs.mkdirSync(config.paths.logs, { recursive: true });
+    log(`Carpeta ${config.paths.logs} creada correctamente`, 'success');
+  }
+  
+  // Crear carpeta para backups
+  if (!fs.existsSync(config.paths.backups)) {
+    fs.mkdirSync(config.paths.backups, { recursive: true });
+    log(`Carpeta ${config.paths.backups} creada correctamente`, 'success');
   }
   
   // Crear carpeta para archivos de datos si está en una ruta diferente
@@ -24,7 +36,7 @@ function ensureDirectories() {
     const learningDataDir = path.dirname(config.paths.learningData);
     if (!fs.existsSync(learningDataDir)) {
       fs.mkdirSync(learningDataDir, { recursive: true });
-      console.log(`Carpeta ${learningDataDir} creada correctamente`);
+      log(`Carpeta ${learningDataDir} creada correctamente`, 'success');
     }
   }
 }
@@ -33,7 +45,7 @@ function ensureDirectories() {
  * Crea el archivo learning-data.json inicial si no existe
  */
 function createLearningDataFile() {
-  const filePath = config.paths.learningData || config.files.learningData;
+  const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
   
   if (!fs.existsSync(filePath)) {
     try {
@@ -59,7 +71,7 @@ function createLearningDataFile() {
  */
 function checkFilePermissions() {
   try {
-    const filePath = config.paths.learningData || config.files.learningData;
+    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
     
     // Intentar escribir en un archivo temporal para verificar permisos
     const testFile = `${filePath}.test`;
@@ -80,12 +92,18 @@ function checkFilePermissions() {
  */
 function saveLearningData(data) {
   try {
-    const filePath = config.paths.learningData || config.files.learningData;
+    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
     
     // Asegurar que el directorio existe
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // Validar que los datos sean un objeto válido antes de guardar
+    if (!data || typeof data !== 'object') {
+      log('Datos inválidos al intentar guardar', 'error');
+      return false;
     }
     
     const jsonData = JSON.stringify(data, null, 2);
@@ -104,7 +122,7 @@ function saveLearningData(data) {
  */
 function loadLearningData() {
   try {
-    const filePath = config.paths.learningData || config.files.learningData;
+    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
     log(`Intentando cargar datos de aprendizaje desde: ${filePath}`, 'info');
     
     if (!fs.existsSync(filePath)) {
@@ -151,7 +169,7 @@ function loadLearningData() {
  * @returns {boolean} - true si es un grupo, false si no
  */
 function isGroupChat(fromId) {
-  return fromId.endsWith('@g.us');
+  return fromId && typeof fromId === 'string' && fromId.endsWith('@g.us');
 }
 
 /**
@@ -185,7 +203,7 @@ function formatLogMessage(message, type = 'info') {
 }
 
 /**
- * Imprime un mensaje de log en la consola
+ * Imprime un mensaje de log en la consola y opcionalmente lo guarda en archivo
  * @param {string} message - Mensaje a imprimir
  * @param {string} type - Tipo de mensaje ('info', 'error', 'success', 'warning')
  */
@@ -202,6 +220,27 @@ function log(message, type = 'info') {
     default:
       console.log(formattedMessage);
   }
+  
+  // Guardar log en archivo si está configurado
+  if (config.logging && config.logging.saveToFile) {
+    try {
+      const logFileName = type === 'error' ? config.files.errorLog : config.files.accessLog;
+      const logFilePath = path.join(config.paths.logs, logFileName);
+      
+      // Asegurar que el directorio existe
+      if (!fs.existsSync(config.paths.logs)) {
+        fs.mkdirSync(config.paths.logs, { recursive: true });
+      }
+      
+      // Agregar timestamp y mensaje al archivo
+      const logTime = new Date().toISOString();
+      const logLine = `[${logTime}] [${type.toUpperCase()}] ${message}\n`;
+      
+      fs.appendFileSync(logFilePath, logLine);
+    } catch (err) {
+      console.error(`Error al guardar log en archivo: ${err.message}`);
+    }
+  }
 }
 
 /**
@@ -209,15 +248,20 @@ function log(message, type = 'info') {
  */
 function backupLearningData() {
   try {
-    const filePath = config.paths.learningData || config.files.learningData;
+    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
     
     if (!fs.existsSync(filePath)) {
       log(`No se puede crear copia de seguridad, el archivo ${filePath} no existe`, 'warning');
       return false;
     }
     
+    // Crear directorio de backup si no existe
+    if (!fs.existsSync(config.paths.backups)) {
+      fs.mkdirSync(config.paths.backups, { recursive: true });
+    }
+    
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = `${filePath}.${timestamp}.bak`;
+    const backupPath = path.join(config.paths.backups, `learning-data-${timestamp}.bak`);
     
     fs.copyFileSync(filePath, backupPath);
     log(`Copia de seguridad creada: ${backupPath}`, 'success');
@@ -251,14 +295,20 @@ function ensureValidDataStructure(data) {
 
 /**
  * Sanitiza un mensaje para evitar inyección de comandos
+ * Versión mejorada con mejor manejo de caracteres especiales
  * @param {string} message - Mensaje a sanitizar
  * @returns {string} - Mensaje sanitizado
  */
 function sanitizeMessage(message) {
   if (!message) return '';
   
-  // Remover comandos potenciales
-  return message.replace(/!(switch|learn|status|pendientes|responder)/g, '\\$1');
+  // Escapar los comandos para evitar inyección
+  let sanitized = message
+    .replace(/![a-z]+/gi, (match) => `\\${match}`)
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  
+  return sanitized;
 }
 
 module.exports = {

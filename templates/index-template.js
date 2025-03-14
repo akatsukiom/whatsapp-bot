@@ -116,15 +116,34 @@ function createIndexHtml() {
       height: 10px;
       margin: 10px 0;
     }
+    .connection-alert {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      min-width: 300px;
+      display: none;
+    }
     @keyframes spinner-border {
       to { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
+  <!-- Alerta de conexión -->
+  <div id="connection-alert" class="connection-alert alert alert-danger">
+    <i class="bi bi-wifi-off me-2"></i> Se ha perdido la conexión con el servidor. Intentando reconectar...
+  </div>
+
   <div class="container">
     <div class="header-container">
       <h1 class="text-center mb-0"><i class="bi bi-whatsapp me-2"></i>WhatsApp Bot Manager</h1>
+      <div class="text-center mt-2">
+        <span id="connection-status" class="badge bg-secondary">
+          <i class="bi bi-wifi me-1"></i> Conectando...
+        </span>
+      </div>
     </div>
     
     <!-- Cuenta activa y selector -->
@@ -187,12 +206,50 @@ function createIndexHtml() {
     </div>
   </div>
   
+  <!-- Modal para agregar nueva cuenta -->
+  <div class="modal fade" id="addAccountModal" tabindex="-1" aria-labelledby="addAccountModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="addAccountModalLabel">Agregar nueva cuenta</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="addAccountForm">
+            <div class="mb-3">
+              <label for="phone-number" class="form-label">Número de teléfono (con código de país)</label>
+              <input type="text" class="form-control" id="phone-number" placeholder="Ej: 521234567890" required>
+              <div class="form-text">Ingresa el número completo incluyendo el código de país, sin espacios ni símbolos.</div>
+            </div>
+            <div class="mb-3">
+              <label for="session-name" class="form-label">Nombre de sesión (opcional)</label>
+              <input type="text" class="form-control" id="session-name" placeholder="Ej: cuenta_principal">
+              <div class="form-text">Si se deja vacío, se generará automáticamente.</div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="add-account-submit">Agregar cuenta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // Conectar a Socket.IO
-    const socket = io();
+    // Conectar a Socket.IO con opciones de reconexión mejoradas
+    const socket = io({
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000
+    });
     
     // Elementos del DOM
+    const connectionAlert = document.getElementById('connection-alert');
+    const connectionStatus = document.getElementById('connection-status');
     const loadingContainer = document.getElementById('loading-container');
     const accountContainer = document.getElementById('account-container');
     const qrDisplay = document.getElementById('qr-display');
@@ -207,11 +264,20 @@ function createIndexHtml() {
     const addAccountBtn = document.getElementById('add-account-btn');
     const loadingProgress = document.getElementById('loading-progress');
     
+  // Referencia al modal
+    const addAccountModal = new bootstrap.Modal(document.getElementById('addAccountModal'));
+    const phoneNumberInput = document.getElementById('phone-number');
+    const sessionNameInput = document.getElementById('session-name');
+    const addAccountSubmitBtn = document.getElementById('add-account-submit');
+    
     // Variables de estado
     let accounts = [];
     let currentAccount = 0;
     let loadingInterval;
     let progressValue = 25;
+    let lastHeartbeat = Date.now();
+    let connectionActive = false;
+    let connectionCheckInterval;
     
     // Iniciar animación de carga
     loadingInterval = setInterval(() => {
@@ -221,6 +287,20 @@ function createIndexHtml() {
         loadingProgress.setAttribute('aria-valuenow', progressValue);
       }
     }, 700);
+    
+    // Verificar estado de la conexión periódicamente
+    connectionCheckInterval = setInterval(() => {
+      const now = Date.now();
+      const elapsedSeconds = (now - lastHeartbeat) / 1000;
+      
+      if (elapsedSeconds > 10 && connectionActive) {
+        connectionActive = false;
+        connectionStatus.className = 'badge bg-danger';
+        connectionStatus.innerHTML = '<i class="bi bi-wifi-off me-1"></i> Desconectado';
+        connectionAlert.style.display = 'block';
+        addLogEntry('Se ha perdido la conexión con el servidor', 'error');
+      }
+    }, 5000);
     
     // Función para mostrar eventos en el log
     function addLogEntry(message, type = 'info') {
@@ -322,6 +402,10 @@ function createIndexHtml() {
           statusClass = 'status-waiting';
           statusText = 'Inicializando';
           break;
+        case 'error':
+          statusClass = 'status-error';
+          statusText = 'Error';
+          break;
         default:
           statusClass = 'status-waiting';
           statusText = 'Esperando';
@@ -340,8 +424,71 @@ function createIndexHtml() {
     
     // Eventos Socket.IO
     socket.on('connect', () => {
+      connectionActive = true;
+      connectionStatus.className = 'badge bg-success';
+      connectionStatus.innerHTML = '<i class="bi bi-wifi me-1"></i> Conectado';
+      connectionAlert.style.display = 'none';
+      
       addLogEntry('Conectado al servidor', 'success');
       socket.emit('requestStatus');
+      
+      // Si no hay respuesta después de 10 segundos, mostrar mensaje de error
+      setTimeout(() => {
+        if (accounts.length === 0) {
+          clearInterval(loadingInterval);
+          loadingContainer.style.display = 'none';
+          accountContainer.style.display = 'block';
+          qrDisplay.innerHTML = \`
+            <div class="alert alert-danger">
+              <i class="bi bi-exclamation-circle-fill me-2"></i>
+              No se recibió información de estado. Por favor, verifica la conexión con el servidor.
+            </div>
+          \`;
+        }
+      }, 10000);
+    });
+    
+    socket.on('disconnect', () => {
+      connectionActive = false;
+      connectionStatus.className = 'badge bg-danger';
+      connectionStatus.innerHTML = '<i class="bi bi-wifi-off me-1"></i> Desconectado';
+      connectionAlert.style.display = 'block';
+      addLogEntry('Se ha perdido la conexión con el servidor', 'error');
+    });
+    
+    // Eventos de reconexión
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      connectionStatus.className = 'badge bg-warning';
+      connectionStatus.innerHTML = \`<i class="bi bi-wifi me-1"></i> Reconectando (\${attemptNumber})...\`;
+      addLogEntry(\`Intentando reconectar al servidor... (intento \${attemptNumber})\`, 'warning');
+    });
+    
+    socket.on('reconnect', () => {
+      connectionActive = true;
+      connectionStatus.className = 'badge bg-success';
+      connectionStatus.innerHTML = '<i class="bi bi-wifi me-1"></i> Conectado';
+      connectionAlert.style.display = 'none';
+      addLogEntry(\`Reconectado al servidor\`, 'success');
+      socket.emit('requestStatus');
+    });
+    
+    socket.on('reconnect_failed', () => {
+      connectionStatus.className = 'badge bg-danger';
+      connectionStatus.innerHTML = '<i class="bi bi-wifi-off me-1"></i> Reconexión fallida';
+      addLogEntry('No se pudo reconectar al servidor. Intenta recargar la página.', 'error');
+    });
+    
+    // Latidos para verificar la conexión
+    socket.on('heartbeat', (data) => {
+      lastHeartbeat = data.timestamp;
+      
+      if (!connectionActive) {
+        connectionActive = true;
+        connectionStatus.className = 'badge bg-success';
+        connectionStatus.innerHTML = '<i class="bi bi-wifi me-1"></i> Conectado';
+        connectionAlert.style.display = 'none';
+        addLogEntry('Conexión con el servidor restablecida', 'success');
+      }
     });
     
     socket.on('status', (data) => {
@@ -350,6 +497,14 @@ function createIndexHtml() {
         clearInterval(loadingInterval);
         loadingContainer.style.display = 'none';
         accountContainer.style.display = 'block';
+      }
+      
+      // Ignorar mensajes del sistema
+      if (data.sessionName === 'sistema') {
+        if (data.message) {
+          addLogEntry(data.message, data.status === 'error' ? 'error' : 'info');
+        }
+        return;
       }
       
       // Buscar si la cuenta ya existe en nuestra lista
@@ -364,8 +519,8 @@ function createIndexHtml() {
         if (currentAccount === existingIndex) {
           displayAccount(currentAccount);
         }
-      } else if (data.sessionName !== 'sistema') {
-        // Agregar nueva cuenta (ignorar mensajes del sistema)
+      } else {
+        // Agregar nueva cuenta
         accounts.push({
           sessionName: data.sessionName,
           phoneNumber: data.phoneNumber,
@@ -383,12 +538,8 @@ function createIndexHtml() {
       }
       
       // Agregar al log
-      if (data.sessionName === 'sistema') {
-        addLogEntry(data.message || 'Actualización del sistema', 'info');
-      } else {
-        addLogEntry(\`\${data.phoneNumber}: \${data.status}\${data.active ? ' (ACTIVA)' : ''}\`, 
-                    data.status === 'ready' ? 'success' : 'info');
-      }
+      addLogEntry(\`\${data.phoneNumber}: \${data.status}\${data.active ? ' (ACTIVA)' : ''}\`, 
+                data.status === 'ready' ? 'success' : 'info');
     });
     
     socket.on('qr', (data) => {
@@ -427,6 +578,39 @@ function createIndexHtml() {
       }
     });
     
+    // Manejo de cierre de sesión
+    socket.on('accountLoggedOut', (data) => {
+      if (data.success) {
+        addLogEntry(\`Sesión cerrada para \${accounts.find(a => a.sessionName === data.sessionName)?.phoneNumber || data.sessionName}\`, 'success');
+        
+        // Actualizar el estado de la cuenta
+        const accountIndex = accounts.findIndex(acc => acc.sessionName === data.sessionName);
+        if (accountIndex >= 0) {
+          accounts[accountIndex].status = 'disconnected';
+          
+          // Si estamos mostrando esta cuenta, actualizar la vista
+          if (currentAccount === accountIndex) {
+            displayAccount(currentAccount);
+          }
+        }
+        
+        // Solicitar actualizaciones
+        socket.emit('requestStatus');
+      } else {
+        addLogEntry(\`Error al cerrar sesión: \${data.error || 'Error desconocido'}\`, 'error');
+      }
+    });
+    
+    // Respuesta a la adición de cuenta
+    socket.on('accountAdded', (data) => {
+      if (data.success) {
+        addLogEntry(\`Cuenta agregada correctamente: \${data.phoneNumber}\`, 'success');
+        socket.emit('requestStatus');
+      } else {
+        addLogEntry(\`Error al agregar cuenta: \${data.error || 'Error desconocido'}\`, 'error');
+      }
+    });
+    
     // Eventos de botones
     prevAccountBtn.addEventListener('click', () => {
       displayAccount(currentAccount - 1);
@@ -437,32 +621,66 @@ function createIndexHtml() {
     });
     
     logoutBtn.addEventListener('click', () => {
-      if (confirm('¿Estás seguro de cerrar la sesión de esta cuenta?')) {
-        socket.emit('logoutAccount', accounts[currentAccount].sessionName);
-        addLogEntry(\`Cerrando sesión de \${accounts[currentAccount].phoneNumber}\`, 'warning');
-        
-        // Deshabilitar botón mientras se procesa
+      if (accounts.length === 0 || currentAccount >= accounts.length) return;
+      
+      if (confirm('¿Estás seguro de cerrar la sesión de esta cuenta? Se eliminarán los datos de sesión y tendrás que escanear un nuevo código QR.')) {
+        const account = accounts[currentAccount];
         logoutBtn.disabled = true;
-        logoutBtn.innerHTML = '<span class="loading-spinner me-2"></span> Cerrando sesión...';
+        logoutBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Cerrando...';
+        
+        socket.emit('logoutAccount', account.sessionName);
+        addLogEntry(\`Cerrando sesión de \${account.phoneNumber}...\`, 'warning');
       }
     });
     
     addAccountBtn.addEventListener('click', () => {
-      const phoneNumber = prompt('Ingresa el número de teléfono (con código de país):');
-      if (phoneNumber) {
-        socket.emit('addAccount', {
-          phoneNumber,
-          sessionName: 'cuenta_' + Date.now()
-        });
-        
-        addLogEntry(\`Agregando nueva cuenta: \${phoneNumber}\`, 'info');
+      addAccountModal.show();
+    });
+    
+    // Agregar nueva cuenta
+    addAccountSubmitBtn.addEventListener('click', () => {
+      const phoneNumber = phoneNumberInput.value.trim();
+      
+      if (!phoneNumber) {
+        alert('Por favor, ingresa un número de teléfono válido');
+        return;
+      }
+      
+      const sessionName = sessionNameInput.value.trim() || \`cuenta_\${Date.now()}\`;
+      
+      socket.emit('addAccount', {
+        phoneNumber,
+        sessionName
+      });
+      
+      addLogEntry(\`Agregando nueva cuenta: \${phoneNumber}...\`, 'info');
+      
+      // Limpiar y cerrar modal
+      phoneNumberInput.value = '';
+      sessionNameInput.value = '';
+      addAccountModal.hide();
+    });
+    
+    // También permitir enviar el formulario con Enter
+    document.getElementById('addAccountForm').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addAccountSubmitBtn.click();
       }
     });
     
     // Solicitar actualizaciones periódicas
     setInterval(() => {
-      socket.emit('requestStatus');
+      if (connectionActive) {
+        socket.emit('requestStatus');
+      }
     }, 30000);
+    
+    // Al cerrar la ventana, limpiar intervalos
+    window.addEventListener('beforeunload', () => {
+      clearInterval(loadingInterval);
+      clearInterval(connectionCheckInterval);
+    });
   </script>
 </body>
 </html>
@@ -470,7 +688,7 @@ function createIndexHtml() {
   
   // Crear carpeta public si no existe
   if (!fs.existsSync(config.paths.public)) {
-    fs.mkdirSync(config.paths.public);
+    fs.mkdirSync(config.paths.public, { recursive: true });
   }
   
   // Guardar el HTML
