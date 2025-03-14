@@ -6,6 +6,23 @@ const createIndexHtml = require('./templates/index-template');
 const createAdminHtml = require('./templates/admin-template');
 const utils = require('./utils');
 
+// Función para verificar periódicamente la salud de las conexiones
+function setupHealthCheck(manager) {
+  setInterval(() => {
+    try {
+      utils.log('Realizando verificación de salud de las conexiones...', 'info');
+      
+      // Intentar reconectar cuentas inactivas
+      manager.checkAndReconnectInactiveAccounts();
+      
+      // Emitir estado actualizado
+      manager.emitCurrentStatus();
+    } catch (error) {
+      utils.log(`Error en la verificación de salud: ${error.message}`, 'error');
+    }
+  }, 60000); // Verificar cada minuto
+}
+
 // Función principal
 async function main() {
   // Verificar directorios necesarios
@@ -51,6 +68,9 @@ async function main() {
   const manager = new WhatsAppManager(io);
   global.whatsappManager = manager; // Hacer global el manager para accederlo desde Socket.IO
   
+  // Configurar verificación de salud
+  setupHealthCheck(manager);
+  
   // Verificar que los datos de aprendizaje se cargaron correctamente
   if (Object.keys(manager.learningDatabase.responses || {}).length > 0) {
     utils.log(`Bot inicializado con ${Object.keys(manager.learningDatabase.responses).length} respuestas configuradas`, 'success');
@@ -76,6 +96,47 @@ async function main() {
   utils.log('Bot de WhatsApp iniciado con sistema de rotación de cuentas', 'success');
   utils.log(`Visita la página web (http://localhost:${config.server.port}) para escanear los códigos QR`, 'info');
   utils.log(`Para administrar respuestas, visita http://localhost:${config.server.port}/admin`, 'info');
+  
+  // Configurar manejo de errores no capturados
+  process.on('uncaughtException', (error) => {
+    utils.log(`Error no capturado: ${error.message}`, 'error');
+    console.error(error);
+  });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    utils.log(`Rechazo de promesa no manejado: ${reason}`, 'error');
+    console.error('Promesa rechazada no manejada:', promise);
+  });
+  
+  // Función de limpieza al cerrar
+  function cleanup() {
+    utils.log('Cerrando aplicación...', 'info');
+    
+    // Realizar tareas de limpieza antes de salir
+    utils.backupLearningData();
+    
+    // Cerrar todas las conexiones de WhatsApp si es posible
+    if (global.whatsappManager && global.whatsappManager.accounts) {
+      utils.log('Cerrando conexiones de WhatsApp...', 'info');
+      
+      global.whatsappManager.accounts.forEach(account => {
+        if (account.client) {
+          try {
+            account.client.destroy();
+            utils.log(`Conexión de ${account.phoneNumber} cerrada correctamente`, 'success');
+          } catch (error) {
+            utils.log(`Error al cerrar conexión de ${account.phoneNumber}: ${error.message}`, 'error');
+          }
+        }
+      });
+    }
+    
+    process.exit(0);
+  }
+  
+  // Capturar señales para cierre limpio
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
 }
 
 // Ejecutar la aplicación

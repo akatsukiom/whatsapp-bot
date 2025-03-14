@@ -45,6 +45,11 @@ function setupServer() {
       message: 'Inicializando sistema de WhatsApp Bot'
     });
 
+    // Ping / pong para mantener las conexiones vivas y medir latencia
+    socket.on('ping', () => {
+      socket.emit('pong', { timestamp: Date.now() });
+    });
+
     // Solicitar estado actual de todas las cuentas
     socket.on('requestStatus', () => {
       if (global.whatsappManager) {
@@ -88,22 +93,110 @@ function setupServer() {
                 })
                 .catch(err => {
                   console.error(`Error al cerrar sesión: ${err.message}`);
-                  socket.emit('error', `Error al cerrar sesión: ${err.message}`);
+                  socket.emit('accountLoggedOut', { sessionName, success: false, error: err.message });
                 });
             } else {
-              socket.emit('error', 'Cliente no inicializado');
+              socket.emit('accountLoggedOut', { sessionName, success: false, error: 'Cliente no inicializado' });
             }
           } else {
             console.warn(`Cuenta no encontrada: ${sessionName}`);
-            socket.emit('error', 'Cuenta no encontrada');
+            socket.emit('accountLoggedOut', { sessionName, success: false, error: 'Cuenta no encontrada' });
           }
         } else {
           console.error('WhatsAppManager no inicializado');
-          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+          socket.emit('accountLoggedOut', { sessionName, success: false, error: 'Gestor de WhatsApp no inicializado' });
         }
       } catch (err) {
         console.error('Error al procesar la solicitud de cierre de sesión:', err);
-        socket.emit('error', 'Error interno del servidor');
+        socket.emit('accountLoggedOut', { sessionName, success: false, error: 'Error interno del servidor' });
+      }
+    });
+
+    // Solicitar regeneración del código QR
+    socket.on('refreshQR', (sessionName) => {
+      try {
+        console.log(`Solicitud recibida para regenerar QR de cuenta: ${sessionName}`);
+        if (global.whatsappManager) {
+          const accountIndex = global.whatsappManager.accounts.findIndex(
+            account => account.sessionName === sessionName
+          );
+          
+          if (accountIndex >= 0) {
+            const account = global.whatsappManager.accounts[accountIndex];
+            
+            // Solo regenerar si hay cliente
+            if (account.client) {
+              // Primero intentamos cerrar la sesión si está activa
+              if (account.status === 'ready' || account.status === 'authenticated') {
+                account.client.logout()
+                  .then(() => {
+                    console.log(`Sesión cerrada para regenerar QR: ${account.phoneNumber}`);
+                    
+                    // Eliminar carpeta de sesión
+                    const sessionDir = `${config.paths.sessions}/${sessionName}`;
+                    if (fs.existsSync(sessionDir)) {
+                      fs.rmdirSync(sessionDir, { recursive: true });
+                      console.log(`Directorio de sesión eliminado: ${sessionDir}`);
+                    }
+                    
+                    // Reiniciar cliente
+                    setTimeout(() => {
+                      account.client.initialize()
+                        .catch(err => {
+                          console.error(`Error al reinicializar cliente: ${err.message}`);
+                          socket.emit('qrRefreshError', { 
+                            sessionName, 
+                            error: err.message
+                          });
+                        });
+                    }, 1000);
+                  })
+                  .catch(err => {
+                    console.error(`Error al cerrar sesión para regenerar QR: ${err.message}`);
+                    socket.emit('qrRefreshError', { 
+                      sessionName, 
+                      error: `Error al cerrar sesión: ${err.message}`
+                    });
+                  });
+              } else {
+                // Si no está autenticado, simplemente reinicializamos
+                account.client.initialize()
+                  .catch(err => {
+                    console.error(`Error al reinicializar cliente: ${err.message}`);
+                    socket.emit('qrRefreshError', { 
+                      sessionName, 
+                      error: err.message
+                    });
+                  });
+              }
+              
+              socket.emit('qrRefreshStarted', { sessionName });
+            } else {
+              socket.emit('qrRefreshError', { 
+                sessionName, 
+                error: 'Cliente no inicializado'
+              });
+            }
+          } else {
+            console.warn(`Cuenta no encontrada para regenerar QR: ${sessionName}`);
+            socket.emit('qrRefreshError', { 
+              sessionName, 
+              error: 'Cuenta no encontrada'
+            });
+          }
+        } else {
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('qrRefreshError', { 
+            sessionName, 
+            error: 'Gestor de WhatsApp no inicializado'
+          });
+        }
+      } catch (err) {
+        console.error('Error al procesar la solicitud de regeneración de QR:', err);
+        socket.emit('qrRefreshError', { 
+          sessionName, 
+          error: 'Error interno del servidor'
+        });
       }
     });
 
@@ -140,6 +233,33 @@ function setupServer() {
       } catch (err) {
         console.error('Error al agregar nueva cuenta:', err);
         socket.emit('error', 'Error interno del servidor');
+      }
+    });
+
+    // Enviar información del sistema
+    socket.on('requestSystemInfo', () => {
+      try {
+        if (global.whatsappManager) {
+          socket.emit('systemInfo', {
+            accounts: global.whatsappManager.accounts.length,
+            activeAccount: global.whatsappManager.activeAccount ? 
+                          global.whatsappManager.activeAccount.phoneNumber : 'Ninguna',
+            pendingMessages: Object.keys(global.whatsappManager.pendingResponses || {}).length,
+            responses: Object.keys(global.whatsappManager.learningDatabase.responses || {}).length,
+            timestamp: Date.now()
+          });
+        } else {
+          socket.emit('systemInfo', {
+            accounts: 0,
+            activeAccount: 'Ninguna',
+            pendingMessages: 0,
+            responses: 0,
+            timestamp: Date.now()
+          });
+        }
+      } catch (error) {
+        console.error('Error al enviar información del sistema:', error);
+        socket.emit('error', 'Error al obtener información del sistema');
       }
     });
 
@@ -333,9 +453,15 @@ function setupServer() {
       */
     });
     
-    // Evento de ping para mantener viva la conexión
-    socket.on('ping', () => {
-      // Este evento simplemente mantiene la conexión activa
+    // Emitir periódicamente el latido cardiaco
+    const heartbeatInterval = setInterval(() => {
+      socket.emit('heartbeat', { timestamp: Date.now() });
+    }, 5000);
+    
+    // Limpiar intervalos al desconectar
+    socket.on('disconnect', () => {
+      console.log('Cliente web desconectado');
+      clearInterval(heartbeatInterval);
     });
   });
 
