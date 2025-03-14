@@ -43,12 +43,14 @@ function setupServer() {
       sessionName: 'sistema',
       phoneNumber: 'Sistema',
       status: 'initializing',
+      detail: 'Inicializando sistema de WhatsApp Bot',
+      progress: 20,
       message: 'Inicializando sistema de WhatsApp Bot'
     });
 
     // Ping / pong para mantener las conexiones vivas y medir latencia
     socket.on('ping', () => {
-      socket.emit('pong', { timestamp: Date.now() });
+      socket.emit('heartbeat', { timestamp: Date.now() });
     });
 
     // Obtener configuración de IA
@@ -92,7 +94,7 @@ function setupServer() {
       }
     });
 
-    // Solicitar estado actual de todas las cuentas
+    // Solicitar estado actual
     socket.on('requestStatus', () => {
       if (global.whatsappManager) {
         global.whatsappManager.emitCurrentStatus();
@@ -102,12 +104,13 @@ function setupServer() {
           sessionName: 'sistema',
           phoneNumber: 'Sistema',
           status: 'error',
-          message: 'El gestor de WhatsApp aún no está inicializado'
+          detail: 'El gestor de WhatsApp aún no está inicializado',
+          progress: 0
         });
       }
     });
 
-    // Cerrar sesión de una cuenta
+    // Cerrar sesión
     socket.on('logoutAccount', (sessionName) => {
       try {
         console.log(`Solicitud recibida para cerrar sesión de cuenta: ${sessionName}`);
@@ -128,10 +131,6 @@ function setupServer() {
                     fs.rmdirSync(sessionDir, { recursive: true });
                     console.log(`Directorio de sesión eliminado: ${sessionDir}`);
                   }
-                  if (global.whatsappManager.activeAccount === account) {
-                    global.whatsappManager.switchToNextAccount();
-                  }
-                  global.whatsappManager.emitCurrentStatus();
                 })
                 .catch(err => {
                   console.error(`Error al cerrar sesión: ${err.message}`);
@@ -159,66 +158,17 @@ function setupServer() {
       try {
         console.log(`Solicitud recibida para regenerar QR de cuenta: ${sessionName}`);
         if (global.whatsappManager) {
-          const accountIndex = global.whatsappManager.accounts.findIndex(
-            account => account.sessionName === sessionName
-          );
-          
-          if (accountIndex >= 0) {
-            const account = global.whatsappManager.accounts[accountIndex];
-            
-            // Si ya hay una solicitud de QR en progreso, no generar otra
-            if (account.qrGenerationInProgress) {
-              console.log(`Ya hay una generación de QR en progreso para ${account.phoneNumber}, ignorando solicitud`);
+          global.whatsappManager.regenerateQR(sessionName)
+            .then(() => {
+              console.log(`QR regenerado correctamente para la cuenta ${sessionName}`);
+            })
+            .catch(err => {
+              console.error(`Error al regenerar QR: ${err.message}`);
               socket.emit('qrRefreshError', { 
                 sessionName, 
-                error: 'Ya hay una generación de QR en progreso'
+                error: err.message
               });
-              return;
-            }
-            
-            // Marcar que hay una generación de QR en progreso
-            account.qrGenerationInProgress = true;
-            
-            // Establecer un timeout para limpiar esta bandera después de un tiempo
-            setTimeout(() => {
-              if (account.qrGenerationInProgress) {
-                account.qrGenerationInProgress = false;
-                console.log(`Timeout de generación de QR para ${account.phoneNumber}`);
-              }
-            }, 30000); // 30 segundos de timeout
-            
-            // Solo regenerar si hay cliente
-            if (account.client) {
-              socket.emit('qrRefreshStarted', { sessionName });
-              
-              // Intentar regenerar el QR
-              global.whatsappManager.regenerateQR(sessionName)
-                .then(() => {
-                  console.log(`QR regenerado correctamente para ${account.phoneNumber}`);
-                  account.qrGenerationInProgress = false;
-                })
-                .catch(err => {
-                  console.error(`Error al regenerar QR: ${err.message}`);
-                  account.qrGenerationInProgress = false;
-                  socket.emit('qrRefreshError', { 
-                    sessionName, 
-                    error: err.message
-                  });
-                });
-            } else {
-              account.qrGenerationInProgress = false;
-              socket.emit('qrRefreshError', { 
-                sessionName, 
-                error: 'Cliente no inicializado'
-              });
-            }
-          } else {
-            console.warn(`Cuenta no encontrada para regenerar QR: ${sessionName}`);
-            socket.emit('qrRefreshError', { 
-              sessionName, 
-              error: 'Cuenta no encontrada'
             });
-          }
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('qrRefreshError', { 
@@ -232,85 +182,6 @@ function setupServer() {
           sessionName, 
           error: 'Error interno del servidor'
         });
-      }
-    });
-
-    // Agregar nueva cuenta
-    socket.on('addAccount', (data) => {
-      try {
-        console.log(`Solicitud recibida para agregar nueva cuenta: ${data.phoneNumber}`);
-        if (!data.phoneNumber) {
-          socket.emit('error', 'Número de teléfono no proporcionado');
-          return;
-        }
-        if (global.whatsappManager) {
-          const existingAccount = global.whatsappManager.accounts.find(
-            account => account.phoneNumber === data.phoneNumber
-          );
-          if (existingAccount) {
-            socket.emit('error', 'Este número ya está registrado');
-            return;
-          }
-          const index = global.whatsappManager.addAccount(
-            data.phoneNumber, 
-            data.sessionName || `cuenta_${Date.now()}`
-          );
-          console.log(`Nueva cuenta agregada: ${data.phoneNumber} (índice: ${index})`);
-          socket.emit('accountAdded', { 
-            phoneNumber: data.phoneNumber, 
-            index: index,
-            success: true 
-          });
-        } else {
-          console.error('WhatsAppManager no inicializado');
-          socket.emit('error', 'Gestor de WhatsApp no inicializado');
-        }
-      } catch (err) {
-        console.error('Error al agregar nueva cuenta:', err);
-        socket.emit('error', 'Error interno del servidor');
-      }
-    });
-
-    // Enviar información del sistema
-    socket.on('requestSystemInfo', () => {
-      try {
-        if (global.whatsappManager) {
-          socket.emit('systemInfo', {
-            accounts: global.whatsappManager.accounts.length,
-            activeAccount: global.whatsappManager.activeAccount ? 
-                          global.whatsappManager.activeAccount.phoneNumber : 'Ninguna',
-            pendingMessages: Object.keys(global.whatsappManager.pendingResponses || {}).length,
-            responses: Object.keys(global.whatsappManager.learningDatabase.responses || {}).length,
-            timestamp: Date.now()
-          });
-        } else {
-          socket.emit('systemInfo', {
-            accounts: 0,
-            activeAccount: 'Ninguna',
-            pendingMessages: 0,
-            responses: 0,
-            timestamp: Date.now()
-          });
-        }
-      } catch (error) {
-        console.error('Error al enviar información del sistema:', error);
-        socket.emit('error', 'Error al obtener información del sistema');
-      }
-    });
-
-    // Forzar verificación de cuentas inactivas
-    socket.on('checkInactiveAccounts', () => {
-      try {
-        if (global.whatsappManager) {
-          console.log('Forzando verificación de cuentas inactivas...');
-          global.whatsappManager.checkAndReconnectInactiveAccounts();
-          socket.emit('checkInactiveAccountsStarted');
-        } else {
-          socket.emit('error', 'Gestor de WhatsApp no inicializado');
-        }
-      } catch (err) {
-        console.error('Error al verificar cuentas inactivas:', err);
-        socket.emit('error', 'Error al verificar cuentas inactivas: ' + err.message);
       }
     });
 
@@ -350,26 +221,8 @@ function setupServer() {
           }
         }
       } catch (err) {
-        console.error('Error detallado al leer las respuestas:', err);
-        console.error('Mensaje de error:', err.message);
-        console.error('Stack de error:', err.stack);
+        console.error('Error al leer las respuestas:', err);
         socket.emit('error', 'No se pudieron cargar las respuestas: ' + err.message);
-      }
-    });
-
-    // Exportar respuestas (opcional si se usa callback en getResponses)
-    socket.on('exportResponses', () => {
-      try {
-        console.log('Solicitud recibida para exportar respuestas');
-        if (global.whatsappManager) {
-          const responses = global.whatsappManager.getAllResponses();
-          socket.emit('responsesExport', { responses });
-        } else {
-          socket.emit('error', 'El gestor de WhatsApp no está inicializado');
-        }
-      } catch (err) {
-        console.error('Error al exportar respuestas:', err);
-        socket.emit('error', 'Error al exportar respuestas: ' + err.message);
       }
     });
 
@@ -458,9 +311,7 @@ function setupServer() {
           }
         }
       } catch (err) {
-        console.error('Error detallado al agregar respuesta:', err);
-        console.error('Mensaje de error:', err.message);
-        console.error('Stack de error:', err.stack);
+        console.error('Error al agregar respuesta:', err);
         socket.emit('error', 'No se pudo guardar la respuesta: ' + err.message);
       }
     });
@@ -502,9 +353,7 @@ function setupServer() {
           }
         }
       } catch (err) {
-        console.error('Error detallado al eliminar respuesta:', err);
-        console.error('Mensaje de error:', err.message);
-        console.error('Stack de error:', err.stack);
+        console.error('Error al eliminar respuesta:', err);
         socket.emit('error', 'No se pudo eliminar la respuesta: ' + err.message);
       }
     });

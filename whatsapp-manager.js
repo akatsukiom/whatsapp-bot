@@ -18,6 +18,7 @@ class WhatsAppManager {
       mediaHandlers: {}
     };
     this.pendingResponses = {}; // Para almacenar mensajes pendientes de respuesta
+    this.isGeneratingQR = false;
 
     // Cargar datos de aprendizaje
     this.loadLearningData();
@@ -235,14 +236,18 @@ class WhatsAppManager {
       // Emitir latido para verificar que los clientes están conectados
       this.io.emit('heartbeat', { timestamp: Date.now() });
       
-      // Enviar el estado de cada cuenta
-      this.accounts.forEach(account => {
+      // Enviar el estado de la cuenta principal (solo una)
+      if (this.accounts.length > 0) {
+        const account = this.accounts[0];
         let status = 'disconnected';
         let detail = '';
+        let progress = 0;
         
         try {
           if (account.client && account.client.info) {
             status = 'ready';
+            progress = 100;
+            detail = '¡Conectado exitosamente!';
           } else if (account.client && account.client.authStrategy) {
             const authStrategy = account.client.authStrategy;
             if (
@@ -251,17 +256,27 @@ class WhatsAppManager {
               fs.existsSync(`${config.paths.sessions}/${account.sessionName}/session`)
             ) {
               status = 'authenticated';
+              progress = 90;
+              detail = 'Autenticado, finalizando conexión...';
             }
           }
           
           // Agregar información adicional
           if (account.lastError) {
             detail = account.lastError.substring(0, 100);
+            progress = 0;
+          }
+          
+          if (this.isGeneratingQR) {
+            status = 'waiting';
+            detail = 'Esperando escaneo del código QR...';
+            progress = 70;
           }
         } catch (error) {
           utils.log(`Error al obtener estado de ${account.phoneNumber}: ${error.message}`, 'error');
           status = 'error';
           detail = error.message;
+          progress = 0;
         }
         
         this.io.emit('status', {
@@ -269,10 +284,11 @@ class WhatsAppManager {
           phoneNumber: account.phoneNumber,
           status: status,
           detail: detail,
-          active: account.active,
+          progress: progress,
+          active: true,
           timestamp: Date.now()
         });
-      });
+      }
       
       // Emitir información del sistema
       this.io.emit('systemInfo', {
@@ -287,15 +303,25 @@ class WhatsAppManager {
     }
   }
 
-  // Agregar una nueva cuenta
+  // Agregar una nueva cuenta (solo una)
   addAccount(phoneNumber, sessionName) {
     const sessionFolder = path.join(config.paths.sessions, sessionName);
 
-    // Crear cliente de WhatsApp, forzando que las sesiones se guarden en /data/sessions/<sessionName> (o lo que config tengas)
+    // Emitir estado de inicialización con barra de progreso
+    this.io.emit('status', {
+      sessionName,
+      phoneNumber,
+      status: 'initializing',
+      detail: 'Inicializando cliente de WhatsApp...',
+      progress: 10,
+      active: true
+    });
+
+    // Crear cliente de WhatsApp
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: sessionName,
-        dataPath: sessionFolder // <-- Se guardará la sesión en config.paths.sessions/sessionName
+        dataPath: sessionFolder
       }),
       puppeteer: {
         headless: true,
@@ -304,9 +330,36 @@ class WhatsAppManager {
       }
     });
 
+    // Aumentar el límite de event listeners para evitar warnings
+    if (client.maxListeners) {
+      client.setMaxListeners(20);
+    }
+
+    // Actualizar el progreso mientras se inicializa
+    this.io.emit('status', {
+      sessionName,
+      phoneNumber,
+      status: 'initializing',
+      detail: 'Preparando navegador...',
+      progress: 30,
+      active: true
+    });
+
     // Eventos
     client.on('qr', (qr) => {
       utils.log(`QR Code generado para la cuenta ${phoneNumber}`, 'info');
+      this.isGeneratingQR = true;
+      
+      // Emitir estado de espera de escaneo
+      this.io.emit('status', {
+        sessionName,
+        phoneNumber,
+        status: 'waiting',
+        detail: 'Esperando escaneo del código QR...',
+        progress: 70,
+        active: true
+      });
+      
       qrcode.toDataURL(qr, (err, url) => {
         if (err) {
           utils.log(`Error al generar QR: ${err.message}`, 'error');
@@ -318,6 +371,7 @@ class WhatsAppManager {
           phoneNumber,
           qrDataUrl: url
         });
+        
         // Guardar QR como archivo
         qrcode.toFile(`${config.paths.public}/qr-${sessionName}.png`, qr, {
           type: 'png',
@@ -331,24 +385,38 @@ class WhatsAppManager {
 
     client.on('ready', () => {
       utils.log(`Cliente ${phoneNumber} está listo!`, 'success');
+      this.isGeneratingQR = false;
       
       // Actualizar estado de la cuenta
       const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
       if (accountObj) {
         accountObj.status = 'ready';
         accountObj.lastError = null;
-        accountObj.retryCount = 0; // Resetear el contador de reintentos
-        accountObj.everConnected = true; // Agregar esta bandera
+        accountObj.retryCount = 0;
       }
       
-        // Emitir estado de conexión
-
+      // Actualizar estado con progreso completo
       this.io.emit('status', {
         sessionName,
         phoneNumber,
         status: 'ready',
-        active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
+        detail: '¡Conectado exitosamente!',
+        progress: 100,
+        active: true
       });
+      
+      // Enviar mensaje especial al log
+      this.io.emit('consoleLog', `✅ CONECTADO EXITOSAMENTE: ${phoneNumber}`);
+      
+      // Limpiar archivo QR si existe
+      const qrFilePath = `${config.paths.public}/qr-${sessionName}.png`;
+      if (fs.existsSync(qrFilePath)) {
+        try {
+          fs.unlinkSync(qrFilePath);
+        } catch (error) {
+          utils.log(`Error al eliminar archivo QR: ${error.message}`, 'warning');
+        }
+      }
     });
 
     client.on('authenticated', () => {
@@ -364,7 +432,9 @@ class WhatsAppManager {
         sessionName,
         phoneNumber,
         status: 'authenticated',
-        active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
+        detail: 'Autenticado, finalizando conexión...',
+        progress: 90,
+        active: true
       });
     });
 
@@ -378,95 +448,127 @@ class WhatsAppManager {
 
     // En el evento 'disconnected'
     client.on('disconnected', (reason) => {
-        // Verificar si la desconexión es por cierre de sesión explícito
-        const isIntentionalLogout = reason.includes('logout') || reason.includes('user request');
-        utils.log(`Cliente ${phoneNumber} desconectado: ${reason}`, 'warning');
+      // Verificar si la desconexión es por cierre de sesión explícito
+      const isIntentionalLogout = reason.includes('logout') || reason.includes('user request');
+      utils.log(`Cliente ${phoneNumber} desconectado: ${reason}`, 'warning');
+      this.isGeneratingQR = false;
+      
+      // Guardar el mensaje de error para mostrar en la interfaz
+      const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
+      if (accountObj) {
+        accountObj.lastError = reason;
+        accountObj.status = 'disconnected';
+      }
+      
+      // Emitir estado de desconexión
+      this.io.emit('status', {
+        sessionName,
+        phoneNumber,
+        status: 'disconnected',
+        detail: `Desconectado: ${reason}`,
+        progress: 0,
+        active: true
+      });
+      
+      // Si es un cierre de sesión intencional, no programar reconexión automática
+      if (isIntentionalLogout) {
+        utils.log(`Cierre de sesión intencional para ${phoneNumber}, no se intentará reconectar automáticamente`, 'info');
         
-        // Guardar el mensaje de error para mostrar en la interfaz
-        const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
-        if (accountObj) {
-          accountObj.lastError = reason;
-          accountObj.status = 'disconnected';
+        // Eliminar carpeta de sesión si existe
+        const sessionDir = `${config.paths.sessions}/${sessionName}`;
+        if (fs.existsSync(sessionDir)) {
+          try {
+            fs.rmdirSync(sessionDir, { recursive: true });
+            utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+          } catch (error) {
+            utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
+          }
         }
+        return;
+      }
+
+      // Planificar reconexión con retraso
+      const retryCount = accountObj ? (accountObj.retryCount || 0) : 0;
+      const retryDelay = Math.min(60000, 10000 * Math.pow(2, retryCount));
+      
+      if (accountObj) {
+        accountObj.retryCount = retryCount + 1;
+      }
+      
+      utils.log(`Programando reconexión para ${phoneNumber} en ${retryDelay/1000} segundos`, 'info');
+      
+      // Emitir estado de espera para reconexión
+      this.io.emit('status', {
+        sessionName,
+        phoneNumber,
+        status: 'disconnected',
+        detail: `Reconectando en ${Math.round(retryDelay/1000)} segundos...`,
+        progress: 10,
+        active: true
+      });
+      
+      setTimeout(() => {
+        utils.log(`Intentando reconectar cliente ${phoneNumber}...`, 'info');
         
-        // Si es un cierre de sesión intencional, no programar reconexión automática
-        if (isIntentionalLogout) {
+        // Emitir estado de reconexión iniciada
+        this.io.emit('status', {
+          sessionName,
+          phoneNumber,
+          status: 'initializing',
+          detail: 'Intentando reconectar...',
+          progress: 30,
+          active: true
+        });
+        
+        try {
+          // Guardar timestamp del intento de reconexión
           if (accountObj) {
-            accountObj.everConnected = false; // Restablecer la bandera
+            accountObj.lastReconnectAttempt = Date.now();
           }
-          utils.log(`Cierre de sesión intencional para ${phoneNumber}, no se intentará reconectar automáticamente`, 'info');
           
-          // Eliminar carpeta de sesión si existe
-          const sessionDir = `${config.paths.sessions}/${sessionName}`;
-          if (fs.existsSync(sessionDir)) {
-            try {
-              fs.rmdirSync(sessionDir, { recursive: true });
-              utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
-            } catch (error) {
-              utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
+          client.initialize().catch(err => {
+            utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
+            if (accountObj) {
+              accountObj.lastError = err.message;
+              
+              // Emitir estado actualizado con el error
+              this.io.emit('status', {
+                sessionName,
+                phoneNumber,
+                status: 'error',
+                detail: `Error: ${err.message}`,
+                progress: 0,
+                active: true
+              });
             }
+          });
+        } catch (error) {
+          utils.log(`Excepción al intentar reconectar ${phoneNumber}: ${error.message}`, 'error');
+          if (accountObj) {
+            accountObj.lastError = error.message;
           }
           
-          // Emitir estado y salir de esta función
+          // Emitir estado de error
           this.io.emit('status', {
             sessionName,
             phoneNumber,
-            status: 'disconnected',
-            reason,
-            detail: reason,
-            active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
+            status: 'error',
+            detail: `Error: ${error.message}`,
+            progress: 0,
+            active: true
           });
-          
-          return; // Salir de la función
         }
+      }, retryDelay);
+    });
 
-        // Implementar un reintento exponencial
-        const retryCount = accountObj ? (accountObj.retryCount || 0) : 0;
-        const retryDelay = Math.min(30000, 5000 * Math.pow(1.5, retryCount));
-        
-        if (accountObj) {
-          accountObj.retryCount = retryCount + 1;
-        }
-        
-        if (reason.includes('banned') || reason.includes('timeout')) {
-          utils.log(`La cuenta ${phoneNumber} parece estar baneada, cambiando a otra cuenta...`, 'warning');
-          this.switchToNextAccount();
-        }
-        
-        utils.log(`Programando reconexión para ${phoneNumber} en ${retryDelay/1000} segundos`, 'info');
-        
-        setTimeout(() => {
-          utils.log(`Intentando reconectar cliente ${phoneNumber}...`, 'info');
-          
-          // Usar try/catch para capturar errores durante la reconexión
-          try {
-            // Guardar timestamp del intento de reconexión
-            if (accountObj) {
-              accountObj.lastReconnectAttempt = Date.now();
-            }
-            
-            client.initialize().catch(err => {
-              utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
-              if (accountObj) {
-                accountObj.lastError = err.message;
-                // Emitir estado actualizado con el error
-                this.io.emit('status', {
-                  sessionName,
-                  phoneNumber,
-                  status: 'error',
-                  reason: err.message,
-                  detail: err.message,
-                  active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
-                });
-              }
-            });
-          } catch (error) {
-            utils.log(`Excepción al intentar reconectar ${phoneNumber}: ${error.message}`, 'error');
-            if (accountObj) {
-              accountObj.lastError = error.message;
-            }
-          }
-        }, retryDelay);
+    // Actualizar progreso antes de inicializar
+    this.io.emit('status', {
+      sessionName,
+      phoneNumber,
+      status: 'initializing',
+      detail: 'Conectando con WhatsApp...',
+      progress: 50,
+      active: true
     });
 
     // Inicializamos
@@ -485,36 +587,27 @@ class WhatsAppManager {
         sessionName,
         phoneNumber,
         status: 'error',
-        detail: err.message,
-        active: false
+        detail: `Error: ${err.message}`,
+        progress: 0,
+        active: true
       });
     });
 
-    this.accounts.push({
+    const account = {
       phoneNumber,
       sessionName,
       client,
-      active: false,
-      bannedUntil: null,
+      active: true,
       status: 'initializing',
       lastError: null,
       retryCount: 0,
       lastReconnectAttempt: null
-    });
+    };
+    
+    this.accounts = [account]; // Reemplazar cualquier cuenta anterior
+    this.activeAccount = account;
 
-    if (this.accounts.length === 1) {
-      this.accounts[0].active = true;
-      this.activeAccount = this.accounts[0];
-    }
-
-    this.io.emit('status', {
-      sessionName,
-      phoneNumber,
-      status: 'initializing',
-      active: this.accounts.length === 1
-    });
-
-    return this.accounts.length - 1;
+    return 0;
   }
 
   // Cerrar sesión
@@ -542,7 +635,8 @@ class WhatsAppManager {
           phoneNumber: account.phoneNumber,
           status: 'disconnected',
           detail: 'Cerrado por usuario',
-          active: false
+          progress: 0,
+          active: true
         });
         
         // Eliminar carpeta de sesión
@@ -550,11 +644,6 @@ class WhatsAppManager {
         if (fs.existsSync(sessionDir)) {
           fs.rmdirSync(sessionDir, { recursive: true });
           utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
-        }
-        
-        // Si era la cuenta activa, cambiar a otra
-        if (this.activeAccount === account) {
-          this.switchToNextAccount();
         }
         
         return true;
@@ -578,12 +667,23 @@ class WhatsAppManager {
       const account = this.accounts[accountIndex];
       utils.log(`Regenerando QR para la cuenta ${account.phoneNumber}`, 'info');
       
+      // Emitir estado de inicio de regeneración
+      this.io.emit('status', {
+        sessionName: account.sessionName,
+        phoneNumber: account.phoneNumber,
+        status: 'initializing',
+        detail: 'Regenerando código QR...',
+        progress: 20,
+        active: true
+      });
+      
       // Primero, cerrar sesión si existe
       if (account.client) {
         try {
           await account.client.logout();
           utils.log(`Sesión cerrada para regenerar QR: ${account.phoneNumber}`, 'success');
-        } catch (logoutError) {
+
+          } catch (logoutError) {
           utils.log(`Error al cerrar sesión: ${logoutError.message}. Continuando con eliminación manual.`, 'warning');
         }
         
@@ -597,13 +697,16 @@ class WhatsAppManager {
         // Reinicializar cliente
         account.status = 'initializing';
         account.lastError = null;
+        this.isGeneratingQR = false;
         
         // Emitir estado actualizado
         this.io.emit('status', {
           sessionName: account.sessionName,
           phoneNumber: account.phoneNumber,
           status: 'initializing',
-          active: account.active
+          detail: 'Preparando nuevo código QR...',
+          progress: 40,
+          active: true
         });
         
         // Esperar un segundo y reiniciar
@@ -623,8 +726,9 @@ class WhatsAppManager {
             sessionName: account.sessionName,
             phoneNumber: account.phoneNumber,
             status: 'error',
-            detail: initError.message,
-            active: account.active
+            detail: `Error: ${initError.message}`,
+            progress: 0,
+            active: true
           });
           
           throw initError;
@@ -685,16 +789,6 @@ class WhatsAppManager {
     // Otros comandos
     const params = message.body.split(' ').slice(1).join(' ');
     switch (command) {
-      case '!switch':
-        const accountIndex = parseInt(params);
-        if (isNaN(accountIndex) || accountIndex >= this.accounts.length) {
-          client.sendMessage(message.from, 'Índice de cuenta inválido');
-          return;
-        }
-        this.switchToAccount(accountIndex);
-        client.sendMessage(message.from, `Cambiado a la cuenta ${this.accounts[accountIndex].phoneNumber}`);
-        break;
-
       case '!learn':
         const parts = params.split('|');
         if (parts.length !== 2) {
@@ -712,17 +806,17 @@ class WhatsAppManager {
         break;
 
       case '!status':
-        let statusMsg = 'Estado de las cuentas:\n';
-        this.accounts.forEach((account, index) => {
-          statusMsg += `${index}: ${account.phoneNumber} - ${account.status || 'desconocido'} - ${account.active ? 'ACTIVA' : 'inactiva'}`;
+        let statusMsg = 'Estado de la cuenta:\n';
+        const account = this.accounts[0];
+        if (account) {
+          statusMsg += `${account.phoneNumber} - ${account.status || 'desconocido'}\n`;
           if (account.lastError) {
-            statusMsg += ` (Error: ${account.lastError})`;
+            statusMsg += `Error: ${account.lastError}\n`;
           }
-          if (account.bannedUntil) {
-            statusMsg += ` (baneada hasta ${account.bannedUntil})`;
-          }
-          statusMsg += '\n';
-        });
+        } else {
+          statusMsg += 'No hay cuenta configurada\n';
+        }
+        
         if (this.pendingResponses && Object.keys(this.pendingResponses).length > 0) {
           statusMsg += '\nMensajes pendientes de respuesta: ' + Object.keys(this.pendingResponses).length;
         }
@@ -764,19 +858,24 @@ class WhatsAppManager {
         break;
 
       case '!reconnect':
-        const reconnectIndex = parseInt(params);
-        if (isNaN(reconnectIndex) || reconnectIndex >= this.accounts.length) {
-          client.sendMessage(message.from, 'Índice de cuenta inválido');
-          return;
-        }
-        const accountToReconnect = this.accounts[reconnectIndex];
-        if (accountToReconnect && accountToReconnect.client) {
-          client.sendMessage(message.from, `Intentando reconectar la cuenta ${accountToReconnect.phoneNumber}...`);
+        if (this.accounts.length > 0 && this.accounts[0].client) {
+          client.sendMessage(message.from, `Intentando reconectar la cuenta ${this.accounts[0].phoneNumber}...`);
+          
+          // Emitir estado de reconexión
+          this.io.emit('status', {
+            sessionName: this.accounts[0].sessionName,
+            phoneNumber: this.accounts[0].phoneNumber,
+            status: 'initializing',
+            detail: 'Reconectando por comando de administrador...',
+            progress: 25,
+            active: true
+          });
+          
           try {
-            await accountToReconnect.client.initialize();
-            client.sendMessage(message.from, `✅ Reconexión iniciada para ${accountToReconnect.phoneNumber}`);
+            await this.accounts[0].client.initialize();
+            client.sendMessage(message.from, `✅ Reconexión iniciada para ${this.accounts[0].phoneNumber}`);
           } catch (error) {
-        client.sendMessage(message.from, `❌ Error al reconectar: ${error.message}`);
+            client.sendMessage(message.from, `❌ Error al reconectar: ${error.message}`);
           }
         } else {
           client.sendMessage(message.from, 'No se pudo reconectar la cuenta: cliente no inicializado');
@@ -786,7 +885,7 @@ class WhatsAppManager {
       default:
         client.sendMessage(
           message.from,
-          'Comando desconocido. Comandos disponibles: !switch, !learn, !status, !pendientes, !responder, !reload, !reconnect'
+          'Comando desconocido. Comandos disponibles: !learn, !status, !pendientes, !responder, !reload, !reconnect'
         );
     }
   }
@@ -998,76 +1097,6 @@ class WhatsAppManager {
     }
   }
 
-  // Cambiar a una cuenta específica
-  switchToAccount(index) {
-    if (index < 0 || index >= this.accounts.length) {
-      utils.log('Índice de cuenta inválido', 'error');
-      return false;
-    }
-    if (this.activeAccount) {
-      this.activeAccount.active = false;
-      try {
-        let status = 'disconnected';
-        if (this.activeAccount.client && this.activeAccount.client.info) {
-          status = 'ready';
-        }
-        this.io.emit('status', {
-          sessionName: this.activeAccount.sessionName,
-          phoneNumber: this.activeAccount.phoneNumber,
-          status: status,
-          active: false
-        });
-      } catch (error) {
-        utils.log(`Error al emitir estado de cuenta desactivada: ${error.message}`, 'error');
-      }
-    }
-    this.accounts[index].active = true;
-    this.activeAccount = this.accounts[index];
-
-    try {
-      let status = this.accounts[index].status || 'disconnected';
-      if (this.activeAccount.client && this.activeAccount.client.info) {
-        status = 'ready';
-      }
-      this.io.emit('status', {
-        sessionName: this.activeAccount.sessionName,
-        phoneNumber: this.activeAccount.phoneNumber,
-        status: status,
-        active: true
-      });
-    } catch (error) {
-      utils.log(`Error al emitir estado de cuenta activada: ${error.message}`, 'error');
-    }
-    utils.log(`Cambiado a la cuenta ${this.activeAccount.phoneNumber}`, 'success');
-    return true;
-  }
-
-  // Cambiar automáticamente a la siguiente cuenta
-  switchToNextAccount() {
-    const currentIndex = this.accounts.findIndex(acc => acc === this.activeAccount);
-    for (let i = 1; i <= this.accounts.length; i++) {
-      const nextIndex = (currentIndex + i) % this.accounts.length;
-      const nextAccount = this.accounts[nextIndex];
-      if (!nextAccount.bannedUntil || new Date() > new Date(nextAccount.bannedUntil)) {
-        if (nextAccount.status === 'ready' || nextAccount.status === 'authenticated') {
-          return this.switchToAccount(nextIndex);
-        }
-      }
-    }
-    
-    // Si no encontramos una cuenta lista, probar con cualquiera
-    for (let i = 1; i <= this.accounts.length; i++) {
-      const nextIndex = (currentIndex + i) % this.accounts.length;
-      const nextAccount = this.accounts[nextIndex];
-      if (!nextAccount.bannedUntil || new Date() > new Date(nextAccount.bannedUntil)) {
-        return this.switchToAccount(nextIndex);
-      }
-    }
-    
-    utils.log('No hay cuentas disponibles sin baneo', 'error');
-    return false;
-  }
-
   // Método para emitir logs al panel
   logToAdminPanel(msg) {
     console.log(msg);
@@ -1076,55 +1105,72 @@ class WhatsAppManager {
     }
   }
   
-  // Verificar y reconectar cuentas inactivas
+  // Verificar y reconectar cuenta inactiva
   checkAndReconnectInactiveAccounts() {
-    utils.log('Verificando cuentas inactivas...', 'info');
-    
-    const now = Date.now();
-    const disconnectedAccounts = this.accounts.filter(account => 
-      account.status !== 'ready' && 
-      account.status !== 'authenticated' &&
-      (!account.lastReconnectAttempt || (now - account.lastReconnectAttempt) > 120000)
-    );
-    
-    if (disconnectedAccounts.length > 0) {
-      utils.log(`Encontradas ${disconnectedAccounts.length} cuentas inactivas. Intentando reconectar...`, 'info');
-      
-      disconnectedAccounts.forEach(account => {
-        if (account.client) {
-          account.lastReconnectAttempt = now;
-          utils.log(`Intentando reconectar cuenta: ${account.phoneNumber}`, 'info');
-          
-          try {
-            account.client.initialize().catch(err => {
-              utils.log(`Error al reconectar ${account.phoneNumber}: ${err.message}`, 'error');
-              account.lastError = err.message;
-              account.status = 'error';
-              
-              this.io.emit('status', {
-                sessionName: account.sessionName,
-                phoneNumber: account.phoneNumber,
-                status: 'error',
-                detail: err.message,
-                active: account.active
-              });
-            });
-          } catch (error) {
-            utils.log(`Excepción al reconectar ${account.phoneNumber}: ${error.message}`, 'error');
-            account.lastError = error.message;
-          }
-        }
-      });
-    } else {
-      utils.log('No se encontraron cuentas inactivas que necesiten reconexión', 'info');
+    // Si no hay cuentas o la única cuenta está conectada, no hacer nada
+    if (this.accounts.length === 0 || 
+        (this.activeAccount && 
+         (this.activeAccount.status === 'ready' || 
+          this.activeAccount.status === 'authenticated'))) {
+      return;
     }
     
-    // Si no hay cuenta activa pero hay cuentas conectadas, activar una
-    if (!this.activeAccount && this.accounts.some(acc => acc.status === 'ready' || acc.status === 'authenticated')) {
-      const readyIndex = this.accounts.findIndex(acc => acc.status === 'ready' || acc.status === 'authenticated');
-      if (readyIndex >= 0) {
-        utils.log(`No hay cuenta activa. Activando cuenta ${this.accounts[readyIndex].phoneNumber}`, 'info');
-        this.switchToAccount(readyIndex);
+    // Si estamos en proceso de generación de QR, no intentar reconectar
+    if (this.isGeneratingQR) {
+      utils.log('Generando código QR, no se intentará reconectar', 'info');
+      return;
+    }
+    
+    const now = Date.now();
+    
+    // Solo reconectar si la única cuenta está desconectada y no está en proceso de reconexión
+    const account = this.accounts[0];
+    if (account && 
+        account.status !== 'ready' && 
+        account.status !== 'authenticated' &&
+        account.status !== 'initializing' &&
+        (!account.lastReconnectAttempt || (now - account.lastReconnectAttempt) > 120000)) {
+      
+      utils.log(`Intentando reconectar cuenta: ${account.phoneNumber}`, 'info');
+      account.lastReconnectAttempt = now;
+      
+      // Emitir estado de reconexión con barra de progreso
+      this.io.emit('status', {
+        sessionName: account.sessionName,
+        phoneNumber: account.phoneNumber,
+        status: 'initializing',
+        detail: 'Intentando reconectar...',
+        progress: 25,
+        active: true
+      });
+      
+      try {
+        account.client.initialize().catch(err => {
+          utils.log(`Error al reconectar ${account.phoneNumber}: ${err.message}`, 'error');
+          account.lastError = err.message;
+          
+          this.io.emit('status', {
+            sessionName: account.sessionName,
+            phoneNumber: account.phoneNumber,
+            status: 'error',
+            detail: `Error: ${err.message}`,
+            progress: 0,
+            active: true
+          });
+        });
+      } catch (error) {
+        utils.log(`Excepción al reconectar ${account.phoneNumber}: ${error.message}`, 'error');
+        account.lastError = error.message;
+        
+        // Emitir estado de error
+        this.io.emit('status', {
+          sessionName: account.sessionName,
+          phoneNumber: account.phoneNumber,
+          status: 'error',
+          detail: `Error: ${error.message}`,
+          progress: 0,
+          active: true
+        });
       }
     }
   }

@@ -6,13 +6,13 @@ const createIndexHtml = require('./templates/index-template');
 const createAdminHtml = require('./templates/admin-template');
 const utils = require('./utils');
 
-// Función para verificar periódicamente la salud de las conexiones
+// Función para verificar periódicamente la salud de la conexión
 function setupHealthCheck(manager) {
   setInterval(() => {
     try {
-      utils.log('Realizando verificación de salud de las conexiones...', 'info');
+      utils.log('Realizando verificación de salud de la conexión...', 'info');
       
-      // Intentar reconectar cuentas inactivas
+      // Intentar reconectar cuenta inactiva
       manager.checkAndReconnectInactiveAccounts();
       
       // Emitir estado actualizado
@@ -88,14 +88,12 @@ async function main() {
     }
   }
   
-  // Agregar cuentas configuradas
-  utils.log('Configurando cuentas de WhatsApp...', 'info');
-  config.whatsapp.accounts.forEach(account => {
-    manager.addAccount(account.phoneNumber, account.sessionName);
-  });
+  // Agregar una única cuenta
+  utils.log('Configurando una única cuenta de WhatsApp...', 'info');
+  manager.addAccount(config.whatsapp.mainAccount.phoneNumber, config.whatsapp.mainAccount.sessionName);
   
-  utils.log('Bot de WhatsApp iniciado con sistema de rotación de cuentas', 'success');
-  utils.log(`Visita la página web (http://localhost:${config.server.port}) para escanear los códigos QR`, 'info');
+  utils.log('Bot de WhatsApp iniciado', 'success');
+  utils.log(`Visita la página web (http://localhost:${config.server.port}) para escanear el código QR`, 'info');
   utils.log(`Para administrar respuestas, visita http://localhost:${config.server.port}/admin`, 'info');
   
   // Configurar manejo de errores no capturados
