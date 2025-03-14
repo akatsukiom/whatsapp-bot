@@ -337,8 +337,11 @@ class WhatsAppManager {
         accountObj.status = 'ready';
         accountObj.lastError = null;
         accountObj.retryCount = 0; // Resetear el contador de reintentos
+        accountObj.everConnected = true; // Agregar esta bandera
       }
       
+        // Emitir estado de conexión
+
       this.io.emit('status', {
         sessionName,
         phoneNumber,
@@ -372,7 +375,11 @@ class WhatsAppManager {
       await this.handleIncomingMessage(message, client);
     });
 
+    // En el evento 'disconnected'
     client.on('disconnected', (reason) => {
+
+        // Verificar si la desconexión es por cierre de sesión explícito
+  const isIntentionalLogout = reason.includes('logout') || reason.includes('user request');
       utils.log(`Cliente ${phoneNumber} desconectado: ${reason}`, 'warning');
       
       // Guardar el mensaje de error para mostrar en la interfaz
@@ -382,6 +389,25 @@ class WhatsAppManager {
         accountObj.status = 'disconnected';
       }
       
+  // Si es un cierre de sesión intencional, no programar reconexión automática
+    if (isIntentionalLogout) {
+      accountObj.everConnected = false; // Restablecer la bandera
+      utils.log(`Cierre de sesión intencional para ${phoneNumber}, no se intentará reconectar automáticamente`, 'info');
+      
+      // Eliminar carpeta de sesión si existe
+      const sessionDir = `${config.paths.sessions}/${sessionName}`;
+      if (fs.existsSync(sessionDir)) {
+        try {
+          fs.rmdirSync(sessionDir, { recursive: true });
+          utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+        } catch (error) {
+          utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
+        }
+      }
+      
+
+
+ // Emitir estado y salir de esta función
       this.io.emit('status', {
         sessionName,
         phoneNumber,
@@ -390,6 +416,11 @@ class WhatsAppManager {
         detail: reason,
         active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
       });
+
+   return;
+    }
+  }
+  
 
       // Implementar un reintento exponencial
       const retryCount = accountObj ? (accountObj.retryCount || 0) : 0;

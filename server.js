@@ -5,6 +5,7 @@ const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const utils = require('./utils');
 
 function setupServer() {
   const app = express();
@@ -124,54 +125,47 @@ function setupServer() {
           if (accountIndex >= 0) {
             const account = global.whatsappManager.accounts[accountIndex];
             
+            // Si ya hay una solicitud de QR en progreso, no generar otra
+            if (account.qrGenerationInProgress) {
+              console.log(`Ya hay una generación de QR en progreso para ${account.phoneNumber}, ignorando solicitud`);
+              socket.emit('qrRefreshError', { 
+                sessionName, 
+                error: 'Ya hay una generación de QR en progreso'
+              });
+              return;
+            }
+            
+            // Marcar que hay una generación de QR en progreso
+            account.qrGenerationInProgress = true;
+            
+            // Establecer un timeout para limpiar esta bandera después de un tiempo
+            setTimeout(() => {
+              if (account.qrGenerationInProgress) {
+                account.qrGenerationInProgress = false;
+                console.log(`Timeout de generación de QR para ${account.phoneNumber}`);
+              }
+            }, 30000); // 30 segundos de timeout
+            
             // Solo regenerar si hay cliente
             if (account.client) {
-              // Primero intentamos cerrar la sesión si está activa
-              if (account.status === 'ready' || account.status === 'authenticated') {
-                account.client.logout()
-                  .then(() => {
-                    console.log(`Sesión cerrada para regenerar QR: ${account.phoneNumber}`);
-                    
-                    // Eliminar carpeta de sesión
-                    const sessionDir = `${config.paths.sessions}/${sessionName}`;
-                    if (fs.existsSync(sessionDir)) {
-                      fs.rmdirSync(sessionDir, { recursive: true });
-                      console.log(`Directorio de sesión eliminado: ${sessionDir}`);
-                    }
-                    
-                    // Reiniciar cliente
-                    setTimeout(() => {
-                      account.client.initialize()
-                        .catch(err => {
-                          console.error(`Error al reinicializar cliente: ${err.message}`);
-                          socket.emit('qrRefreshError', { 
-                            sessionName, 
-                            error: err.message
-                          });
-                        });
-                    }, 1000);
-                  })
-                  .catch(err => {
-                    console.error(`Error al cerrar sesión para regenerar QR: ${err.message}`);
-                    socket.emit('qrRefreshError', { 
-                      sessionName, 
-                      error: `Error al cerrar sesión: ${err.message}`
-                    });
-                  });
-              } else {
-                // Si no está autenticado, simplemente reinicializamos
-                account.client.initialize()
-                  .catch(err => {
-                    console.error(`Error al reinicializar cliente: ${err.message}`);
-                    socket.emit('qrRefreshError', { 
-                      sessionName, 
-                      error: err.message
-                    });
-                  });
-              }
-              
               socket.emit('qrRefreshStarted', { sessionName });
+              
+              // Intentar regenerar el QR
+              global.whatsappManager.regenerateQR(sessionName)
+                .then(() => {
+                  console.log(`QR regenerado correctamente para ${account.phoneNumber}`);
+                  account.qrGenerationInProgress = false;
+                })
+                .catch(err => {
+                  console.error(`Error al regenerar QR: ${err.message}`);
+                  account.qrGenerationInProgress = false;
+                  socket.emit('qrRefreshError', { 
+                    sessionName, 
+                    error: err.message
+                  });
+                });
             } else {
+              account.qrGenerationInProgress = false;
               socket.emit('qrRefreshError', { 
                 sessionName, 
                 error: 'Cliente no inicializado'
@@ -260,6 +254,22 @@ function setupServer() {
       } catch (error) {
         console.error('Error al enviar información del sistema:', error);
         socket.emit('error', 'Error al obtener información del sistema');
+      }
+    });
+
+    // Forzar verificación de cuentas inactivas
+    socket.on('checkInactiveAccounts', () => {
+      try {
+        if (global.whatsappManager) {
+          console.log('Forzando verificación de cuentas inactivas...');
+          global.whatsappManager.checkAndReconnectInactiveAccounts();
+          socket.emit('checkInactiveAccountsStarted');
+        } else {
+          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+        }
+      } catch (err) {
+        console.error('Error al verificar cuentas inactivas:', err);
+        socket.emit('error', 'Error al verificar cuentas inactivas: ' + err.message);
       }
     });
 

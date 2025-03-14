@@ -140,6 +140,9 @@
       color: #6c757d;
       margin-top: 5px;
     }
+    .action-buttons {
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -183,6 +186,9 @@
             <button id="refresh-stats-btn" class="btn btn-sm btn-outline-primary ms-3">
               <i class="bi bi-arrow-clockwise"></i> Actualizar
             </button>
+            <button id="check-inactive-btn" class="btn btn-sm btn-outline-warning ms-2">
+              <i class="bi bi-lightning-charge"></i> Verificar inactivas
+            </button>
           </div>
         </div>
         <div class="row">
@@ -220,6 +226,14 @@
         <!-- Las cuentas se agregarán aquí dinámicamente -->
       </div>
       
+      <div class="row">
+        <div class="col-12 text-center action-buttons">
+          <button id="add-account-btn" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-2"></i> Agregar nueva cuenta
+          </button>
+        </div>
+      </div>
+      
       <div id="no-connections" class="alert alert-warning mt-4" style="display: none;">
         <i class="bi bi-exclamation-triangle-fill me-2"></i> No hay conexiones activas. Espera mientras se inicializa el sistema o revisa los logs del servidor.
       </div>
@@ -247,6 +261,36 @@
     </div>
   </div>
   
+  <!-- Modal para agregar nueva cuenta -->
+  <div class="modal fade" id="addAccountModal" tabindex="-1" aria-labelledby="addAccountModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="addAccountModalLabel">Agregar nueva cuenta</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="addAccountForm">
+            <div class="mb-3">
+              <label for="phone-number" class="form-label">Número de teléfono (con código de país)</label>
+              <input type="text" class="form-control" id="phone-number" placeholder="Ej: 521234567890" required>
+              <div class="form-text">Ingresa el número completo incluyendo el código de país, sin espacios ni símbolos.</div>
+            </div>
+            <div class="mb-3">
+              <label for="session-name" class="form-label">Nombre de sesión (opcional)</label>
+              <input type="text" class="form-control" id="session-name" placeholder="Ej: cuenta_principal">
+              <div class="form-text">Si se deja vacío, se generará automáticamente.</div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="add-account-submit">Agregar cuenta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
   <!-- Añadir Bootstrap JS para algunos componentes -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
@@ -266,7 +310,15 @@
     const activeAccountEl = document.getElementById('active-account');
     const lastUpdateTimeEl = document.getElementById('last-update-time');
     const refreshStatsBtn = document.getElementById('refresh-stats-btn');
+    const checkInactiveBtn = document.getElementById('check-inactive-btn');
     const clearLogsBtn = document.getElementById('clear-logs-btn');
+    const addAccountBtn = document.getElementById('add-account-btn');
+    const addAccountSubmitBtn = document.getElementById('add-account-submit');
+    const phoneNumberInput = document.getElementById('phone-number');
+    const sessionNameInput = document.getElementById('session-name');
+    
+    // Referencias a modales
+    const addAccountModal = new bootstrap.Modal(document.getElementById('addAccountModal'));
     
     // Variables de estado
     let connectionCount = 0;
@@ -276,6 +328,7 @@
     let lastHeartbeat = Date.now();
     let connectionActive = false;
     let connectionCheckInterval;
+    let qrRefreshInProgress = {};
     
     // Conectar a Socket.IO con opciones de reconexión mejoradas
     const socket = io({
@@ -411,6 +464,7 @@
       
       // Solicitar estado actual
       socket.emit('requestStatus');
+      socket.emit('requestSystemInfo');
       
       // Si no hay respuesta después de 10 segundos, mostrar mensaje
       setTimeout(() => {
@@ -434,14 +488,14 @@
     });
     
     // Eventos de reconexión
-    socket.on('reconnecting', (attemptNumber) => {
+    socket.on('reconnect_attempt', (attemptNumber) => {
       connectionStatus.className = 'badge bg-warning';
       connectionStatus.innerHTML = `<i class="bi bi-wifi me-1"></i> Reconectando (${attemptNumber})...`;
       
       addLogEntry(`Intentando reconectar al servidor... (intento ${attemptNumber})`, 'warning');
     });
     
-    socket.on('reconnect', (attemptNumber) => {
+    socket.on('reconnect', () => {
       connectionActive = true;
       connectionStatus.className = 'badge bg-success';
       connectionStatus.innerHTML = '<i class="bi bi-wifi me-1"></i> Conectado';
@@ -449,10 +503,11 @@
       // Ocultar alerta de conexión perdida
       connectionAlert.style.display = 'none';
       
-      addLogEntry(`Reconectado al servidor después de ${attemptNumber} intentos`, 'success');
+      addLogEntry(`Reconectado al servidor`, 'success');
       
       // Solicitar estado actualizado
       socket.emit('requestStatus');
+      socket.emit('requestSystemInfo');
     });
     
     socket.on('reconnect_failed', () => {
@@ -500,6 +555,14 @@
       
       noConnectionsDiv.style.display = 'none';
       
+      // Si la cuenta ya está conectada, ignorar nuevos códigos QR
+      if (accounts[data.sessionName] && 
+          (accounts[data.sessionName].status === 'ready' || 
+           accounts[data.sessionName].status === 'authenticated')) {
+        console.log(`Ignorando QR para ${data.sessionName}, la cuenta ya está conectada`);
+        return;
+      }
+      
       // Almacenar información de la cuenta
       if (!accounts[data.sessionName]) {
         accounts[data.sessionName] = {
@@ -528,7 +591,7 @@
                 <button class="btn btn-sm btn-warning refresh-qr-btn" data-session="${data.sessionName}">
                   <i class="bi bi-arrow-repeat"></i> Refrescar QR
                 </button>
-                <button class="btn btn-sm btn-danger logout-btn" data-session="${data.sessionName}" ${accounts[data.sessionName].status !== 'ready' && accounts[data.sessionName].status !== 'authenticated' ? 'disabled' : ''}>
+                <button class="btn btn-sm btn-danger logout-btn" data-session="${data.sessionName}" disabled>
                   <i class="bi bi-power"></i> Cerrar sesión
                 </button>
               </div>
@@ -555,25 +618,43 @@
           logoutAccount(data.sessionName);
         });
       } else {
-        // Actualizar QR existente
-        const qrElement = document.getElementById('qr-' + data.sessionName);
-        qrElement.innerHTML = `<img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">`;
+        // Actualizar QR existente solo si está en modo espera o error
+        if (accounts[data.sessionName].status !== 'ready' && 
+            accounts[data.sessionName].status !== 'authenticated') {
+          const qrElement = document.getElementById('qr-' + data.sessionName);
+          if (qrElement) {
+            qrElement.innerHTML = `<img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">`;
+          }
+          
+          // Actualizar estado
+          const statusElement = document.getElementById('status-' + data.sessionName);
+          if (statusElement) {
+            statusElement.innerHTML = `
+              <span class="status-indicator status-waiting"></span>
+              <span class="status-text">Esperando escaneo...</span>
+            `;
+          }
+          
+          // Restablecer el botón de refrescar QR
+          const refreshQrBtn = accountElement.querySelector('.refresh-qr-btn');
+          if (refreshQrBtn && qrRefreshInProgress[data.sessionName]) {
+            refreshQrBtn.disabled = false;
+            refreshQrBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refrescar QR';
+            qrRefreshInProgress[data.sessionName] = false;
+          }
+        }
         
-        // Actualizar estado
-        const statusElement = document.getElementById('status-' + data.sessionName);
-        statusElement.innerHTML = `
-          <span class="status-indicator status-waiting"></span>
-          <span class="status-text">Esperando escaneo...</span>
-        `;
-        
-    // Actualizar badge de activo
+        // Actualizar badge de activo
         const container = accountElement.querySelector('.qr-container');
         const phoneNumberEl = accountElement.querySelector('.phone-number');
         
         if (accounts[data.sessionName].active) {
           container.classList.add('active');
           if (!phoneNumberEl.querySelector('.active-badge')) {
-            phoneNumberEl.innerHTML += '<span class="active-badge">ACTIVA</span>';
+            phoneNumberEl.innerHTML = `
+              ${data.phoneNumber || data.sessionName}
+              <span class="active-badge">ACTIVA</span>
+            `;
           }
         } else {
           container.classList.remove('active');
@@ -581,6 +662,7 @@
           if (badge) {
             badge.remove();
           }
+          phoneNumberEl.textContent = data.phoneNumber || data.sessionName;
         }
       }
       
@@ -610,10 +692,28 @@
           lastUpdate: new Date()
         };
       } else {
+        const prevStatus = accounts[data.sessionName].status;
         accounts[data.sessionName].status = data.status;
         accounts[data.sessionName].detail = data.detail || '';
         accounts[data.sessionName].active = data.active || false;
         accounts[data.sessionName].lastUpdate = new Date();
+        
+        // Verificar si cambió de estado desconectado a preparado o autenticado
+        const statusChanged = prevStatus !== data.status && 
+                             (data.status === 'ready' || data.status === 'authenticated');
+        
+        // Si acaba de conectarse, mostrar log
+        if (statusChanged) {
+          addLogEntry(`${data.phoneNumber}: Conectado exitosamente`, 'success');
+        }
+      }
+      
+      // Si es un evento del sistema, solo procesarlo como log
+      if (data.sessionName === 'sistema') {
+        if (data.message) {
+          addLogEntry(data.message, data.status === 'error' ? 'error' : 'info');
+        }
+        return;
       }
       
       // Buscar si ya existe un contenedor para esta cuenta
@@ -627,7 +727,7 @@
         accountElement.innerHTML = `
           <div class="qr-container ${data.active ? 'active' : ''}">
             <div class="d-flex justify-content-between align-items-center mb-3">
-              <div class="phone-number">
+          <div class="phone-number">
                 ${data.phoneNumber || data.sessionName}
                 ${data.active ? '<span class="active-badge">ACTIVA</span>' : ''}
               </div>
@@ -689,6 +789,11 @@
               statusClass = 'status-ready';
               statusText = 'Autenticado';
               logoutBtn.disabled = false;
+              // También ocultar QR cuando está autenticado
+              const qrElementAuth = document.getElementById('qr-' + data.sessionName);
+              if (qrElementAuth) {
+                qrElementAuth.innerHTML = '<p class="alert alert-success"><i class="bi bi-check-circle-fill me-2"></i>WhatsApp autenticado correctamente</p>';
+              }
               break;
             case 'initializing':
               statusClass = 'status-waiting';
@@ -741,30 +846,27 @@
         }
       }
       
-      // Actualizar contenedor de estado general
-      if (data.sessionName !== 'sistema') {
-        const now = new Date().toLocaleTimeString();
-        let statusClass = 'text-secondary';
-        let icon = 'info-circle';
+      // Actualizar estadísticas de conexión
+      updateConnectionStats();
+      
+      // Sólo agregar al log si no es un sistema y ha cambiado de estado
+      if (data.sessionName !== 'sistema' && accounts[data.sessionName].lastStatus !== data.status) {
+        accounts[data.sessionName].lastStatus = data.status;
         
+        let logType = 'info';
         if (data.status === 'ready' || data.status === 'authenticated') {
-          statusClass = 'text-success';
-          icon = 'check-circle';
+          logType = 'success';
         } else if (data.status === 'disconnected' || data.status === 'error') {
-          statusClass = 'text-danger';
-          icon = 'x-circle';
-        } else {
-          statusClass = 'text-warning';
-          icon = 'exclamation-circle';
+          logType = 'error';
+        } else if (data.status === 'initializing' || data.status === 'waiting') {
+          logType = 'warning';
         }
         
         addLogEntry(
           `${data.phoneNumber}: ${data.status}${data.active ? ' (ACTIVA)' : ''}${data.detail ? ' - ' + data.detail : ''}`,
-          data.status === 'ready' ? 'success' : (data.status === 'disconnected' || data.status === 'error' ? 'error' : 'info')
+          logType
         );
       }
-      
-      updateConnectionStats();
     });
     
     // Manejar respuesta de cierre de sesión
@@ -788,10 +890,11 @@
               `;
             }
             
-            // Actualizar botón
+            // Actualizar botones
             const logoutBtn = accountElement.querySelector('.logout-btn');
             if (logoutBtn) {
               logoutBtn.disabled = true;
+              logoutBtn.innerHTML = '<i class="bi bi-power"></i> Cerrar sesión';
             }
             
             // Quitar badge de activo
@@ -802,14 +905,58 @@
             if (badge) {
               badge.remove();
             }
+            phoneNumberEl.textContent = accounts[data.sessionName].phoneNumber || data.sessionName;
           }
         }
         
         // Solicitar actualización de estado
         socket.emit('requestStatus');
+        socket.emit('requestSystemInfo');
       } else {
         addLogEntry(`Error al cerrar sesión: ${data.error || 'Error desconocido'}`, 'error');
+        
+        // Restablecer botón de cierre de sesión
+        const accountElement = document.getElementById('account-' + data.sessionName);
+        if (accountElement) {
+          const logoutBtn = accountElement.querySelector('.logout-btn');
+          if (logoutBtn) {
+            logoutBtn.disabled = false;
+            logoutBtn.innerHTML = '<i class="bi bi-power"></i> Cerrar sesión';
+          }
+        }
       }
+    });
+    
+    // Manejar respuestas de regeneración de QR
+    socket.on('qrRefreshStarted', (data) => {
+      addLogEntry(`Regeneración de QR iniciada para ${accounts[data.sessionName]?.phoneNumber || data.sessionName}`, 'info');
+    });
+    
+    socket.on('qrRefreshError', (data) => {
+      addLogEntry(`Error al regenerar QR: ${data.error}`, 'error');
+      
+      const accountElement = document.getElementById('account-' + data.sessionName);
+      if (accountElement) {
+        const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refrescar QR';
+          qrRefreshInProgress[data.sessionName] = false;
+        }
+        
+        const qrElement = document.getElementById('qr-' + data.sessionName);
+        if (qrElement) {
+          qrElement.innerHTML = '<p class="alert alert-danger"><i class="bi bi-exclamation-circle-fill me-2"></i>Error al regenerar QR</p>';
+        }
+      }
+    });
+    
+    // Respuesta a verificación de cuentas inactivas
+    socket.on('checkInactiveAccountsStarted', () => {
+      addLogEntry('Verificación de cuentas inactivas iniciada', 'info');
+      // Restablecer botón
+      checkInactiveBtn.disabled = false;
+      checkInactiveBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> Verificar inactivas';
     });
     
     // Manejar errores
@@ -838,6 +985,12 @@
     
     // Refrescar código QR
     function refreshQR(sessionName) {
+      // Verificar si ya está en proceso
+      if (qrRefreshInProgress[sessionName]) {
+        addLogEntry(`Ya hay una solicitud de regeneración de QR en proceso para ${accounts[sessionName]?.phoneNumber || sessionName}`, 'warning');
+        return;
+      }
+      
       if (confirm('¿Estás seguro de regenerar el código QR? Esto cerrará la sesión actual si está activa.')) {
         const accountElement = document.getElementById('account-' + sessionName);
         if (accountElement) {
@@ -853,33 +1006,58 @@
           }
         }
         
+        // Marcar como en proceso
+        qrRefreshInProgress[sessionName] = true;
+        
+        // Establecer un timeout para restablecer el estado después de 30 segundos
+        setTimeout(() => {
+          if (qrRefreshInProgress[sessionName]) {
+            qrRefreshInProgress[sessionName] = false;
+            
+            // Restablecer botón si aún está en proceso
+            const accountElement = document.getElementById('account-' + sessionName);
+            if (accountElement) {
+              const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
+              if (refreshBtn && refreshBtn.disabled) {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refrescar QR';
+                
+                addLogEntry(`Timeout al regenerar QR para ${accounts[sessionName]?.phoneNumber || sessionName}`, 'warning');
+              }
+            }
+          }
+        }, 30000);
+        
         socket.emit('refreshQR', sessionName);
         addLogEntry(`Solicitando regeneración de QR para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'info');
       }
     }
     
-    // Manejar respuesta de regeneración de QR
-    socket.on('qrRefreshStarted', (data) => {
-      addLogEntry(`Regeneración de QR iniciada para ${accounts[data.sessionName]?.phoneNumber || data.sessionName}`, 'info');
-    });
-    
-    socket.on('qrRefreshError', (data) => {
-      addLogEntry(`Error al regenerar QR: ${data.error}`, 'error');
+    // Agregar cuenta nueva
+    function addNewAccount() {
+      const phoneNumber = phoneNumberInput.value.trim();
+      const sessionName = sessionNameInput.value.trim() || '';
       
-      const accountElement = document.getElementById('account-' + data.sessionName);
-      if (accountElement) {
-        const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
-        if (refreshBtn) {
-          refreshBtn.disabled = false;
-          refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refrescar QR';
-        }
-        
-        const qrElement = document.getElementById('qr-' + data.sessionName);
-        if (qrElement) {
-          qrElement.innerHTML = '<p class="alert alert-danger"><i class="bi bi-exclamation-circle-fill me-2"></i>Error al regenerar QR</p>';
-        }
+      if (!phoneNumber) {
+        alert('Por favor ingresa un número de teléfono válido');
+        return;
       }
-    });
+      
+      // Cerrar modal
+      addAccountModal.hide();
+      
+      // Enviar solicitud al servidor
+      socket.emit('addAccount', {
+        phoneNumber,
+        sessionName: sessionName || `cuenta_${Date.now()}`
+      });
+      
+      addLogEntry(`Solicitando agregar nueva cuenta: ${phoneNumber}...`, 'info');
+      
+      // Limpiar formulario
+      phoneNumberInput.value = '';
+      sessionNameInput.value = '';
+    }
     
     // Eventos de botones
     refreshStatsBtn.addEventListener('click', () => {
@@ -888,15 +1066,49 @@
       addLogEntry('Solicitando actualización de estado...', 'info');
     });
     
+    checkInactiveBtn.addEventListener('click', () => {
+      checkInactiveBtn.disabled = true;
+      checkInactiveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Verificando...';
+      socket.emit('checkInactiveAccounts');
+      addLogEntry('Solicitando verificación de cuentas inactivas...', 'info');
+    });
+    
     clearLogsBtn.addEventListener('click', () => {
       statusContainer.innerHTML = '<p class="text-muted text-center">Historial limpiado</p>';
       addLogEntry('Historial de eventos limpiado', 'info');
+    });
+    
+    addAccountBtn.addEventListener('click', () => {
+      // Mostrar modal
+      addAccountModal.show();
+    });
+    
+    addAccountSubmitBtn.addEventListener('click', addNewAccount);
+    
+    // También permitir enviar con Enter desde el formulario
+    document.getElementById('addAccountForm').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addNewAccount();
+      }
+    });
+    
+    // Respuesta a la adición de cuenta
+    socket.on('accountAdded', (data) => {
+      if (data.success) {
+        addLogEntry(`Cuenta agregada correctamente: ${data.phoneNumber}`, 'success');
+        socket.emit('requestStatus');
+        socket.emit('requestSystemInfo');
+      } else {
+        addLogEntry(`Error al agregar cuenta: ${data.error || 'Error desconocido'}`, 'error');
+      }
     });
     
     // Actualizar estado cada 30 segundos
     setInterval(() => {
       if (connectionActive) {
         socket.emit('requestStatus');
+        socket.emit('requestSystemInfo');
       }
     }, 30000);
     
