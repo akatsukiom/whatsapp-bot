@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const utils = require('./utils');
+const aiHandler = require('./ai-handler');
 
 class WhatsAppManager {
   constructor(io) {
@@ -892,8 +893,34 @@ class WhatsAppManager {
         }
       }
     } else {
-      utils.log('No se encontró respuesta, reenviando al administrador', 'info');
-      this.forwardToAdmin(message, client, isGroup);
+       // Intenta generar una respuesta con IA antes de reenviar al administrador
+    utils.log('No se encontró respuesta en la base de conocimiento, consultando a la IA...', 'info');
+
+     try {
+      // Genera respuesta con OpenAI
+      const aiResponse = await aiHandler.generateResponse(messageText);
+      
+      utils.log(`Respuesta generada por IA: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
+      
+      // Enviar la respuesta generada por la IA
+      const clientToUse = this.activeAccount ? this.activeAccount.client : client;
+      await clientToUse.sendMessage(message.from, aiResponse);
+      
+      // Emitir respuesta al panel
+      if (this.io) {
+        this.io.emit('botChatMessage', {
+          from: 'BOT-AI',
+          message: aiResponse
+        });
+      }
+      
+      // También reenviar al administrador para que pueda verificar y posiblemente
+      // guardar la respuesta en la base de conocimiento
+      this.forwardToAdmin(message, client, isGroup, 'Respuesta generada por IA');
+      
+    } catch (aiError) {
+      utils.log(`Error al consultar a la IA: ${aiError.message}`, 'error');
+      this.forwardToAdmin(message, client, isGroup, 'Error al generar respuesta con IA');
     }
   }
 

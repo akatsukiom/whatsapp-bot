@@ -193,6 +193,49 @@ function setupServer() {
         });
       }
     });
+// Añadir en server.js en la sección de eventos socket.io
+
+// Obtener configuración de IA
+socket.on('getAIConfig', () => {
+  try {
+    socket.emit('aiConfig', {
+      apiKey: config.openai.apiKey ? '********' : '',
+      model: config.openai.model,
+      privateRedirect: config.openai.privateRedirect,
+      privateMessage: config.openai.privateMessage
+    });
+  } catch (err) {
+    console.error('Error al obtener configuración de IA:', err);
+    socket.emit('error', 'Error al obtener configuración de IA');
+  }
+});
+
+// Actualizar configuración de IA
+socket.on('updateAIConfig', (data) => {
+  try {
+    console.log('Actualizando configuración de IA');
+    
+    // Solo actualizar la API key si se proporciona una nueva
+    if (data.apiKey && data.apiKey !== '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') {
+      config.openai.apiKey = data.apiKey;
+    }
+    
+    config.openai.model = data.model || 'gpt-3.5-turbo';
+    config.openai.privateRedirect = data.privateRedirect !== undefined ? data.privateRedirect : true;
+    config.openai.privateMessage = data.privateMessage || config.openai.privateMessage;
+    
+    // Reiniciar el handler de IA si existe
+    if (global.aiHandler) {
+      global.aiHandler = require('./ai-handler');
+    }
+    
+    socket.emit('aiConfigUpdated');
+  } catch (err) {
+    console.error('Error al actualizar configuración de IA:', err);
+    socket.emit('error', 'Error al actualizar configuración de IA: ' + err.message);
+  }
+});
+    
 
     // Agregar nueva cuenta
     socket.on('addAccount', (data) => {

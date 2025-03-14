@@ -6,6 +6,18 @@ module.exports = {
     port: process.env.PORT || 3000
   },
 
+// Añadir en config.js
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || 'tu-api-key-aquí',
+    model: 'gpt-3.5-turbo',
+    maxTokens: 150,
+    temperature: 0.7,
+    privateRedirect: true, // Si es true, siempre redirecciona al privado
+    privateNumber: '4961260597', // Número al que redirigir
+    privateMessage: "Gracias por tu consulta. Para brindarte una atención personalizada, por favor envíame un mensaje al privado: 4961260597"
+  },
+
+  
   // Configuración de WhatsApp
   whatsapp: {
     // Argumentos para Puppeteer
