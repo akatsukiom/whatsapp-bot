@@ -67,6 +67,7 @@ async function main() {
   utils.log('Iniciando WhatsApp Bot Manager...', 'info');
   const manager = new WhatsAppManager(io);
   global.whatsappManager = manager; // Hacer global el manager para accederlo desde Socket.IO
+  global.aiHandler = require('./ai-handler'); // Hacer global el handler de IA para accederlo desde otras partes
   
   // Configurar verificación de salud
   setupHealthCheck(manager);
