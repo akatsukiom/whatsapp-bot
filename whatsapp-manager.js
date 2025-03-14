@@ -418,7 +418,8 @@ class WhatsAppManager {
       });
 
    
-  
+   return; // Agregar esta línea para salir de la función
+}
 
       // Implementar un reintento exponencial
       const retryCount = accountObj ? (accountObj.retryCount || 0) : 0;
