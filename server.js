@@ -274,13 +274,19 @@ function setupServer() {
     });
 
     // Obtener todas las respuestas
-    socket.on('getResponses', () => {
+    socket.on('getResponses', (callback) => {
       try {
         console.log('Solicitud recibida para obtener respuestas');
         if (global.whatsappManager) {
           const responses = global.whatsappManager.getAllResponses();
           console.log(`Enviando ${Object.keys(responses).length} respuestas al cliente`);
-          socket.emit('responsesList', responses);
+          
+          // Si hay un callback, lo usamos para responder
+          if (typeof callback === 'function') {
+            callback(responses);
+          } else {
+            socket.emit('responsesList', responses);
+          }
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('error', 'El gestor de WhatsApp aún no está inicializado');
@@ -288,7 +294,12 @@ function setupServer() {
             try {
               const data = fs.readFileSync(config.files.learningData, 'utf8');
               const learningData = JSON.parse(data);
-              socket.emit('responsesList', learningData.responses || {});
+              
+              if (typeof callback === 'function') {
+                callback(learningData.responses || {});
+              } else {
+                socket.emit('responsesList', learningData.responses || {});
+              }
             } catch (parseError) {
               console.error('Error al parsear JSON:', parseError);
               socket.emit('error', 'El archivo de respuestas contiene JSON inválido');
@@ -302,6 +313,68 @@ function setupServer() {
         console.error('Mensaje de error:', err.message);
         console.error('Stack de error:', err.stack);
         socket.emit('error', 'No se pudieron cargar las respuestas: ' + err.message);
+      }
+    });
+
+    // Exportar respuestas (opcional si se usa callback en getResponses)
+    socket.on('exportResponses', () => {
+      try {
+        console.log('Solicitud recibida para exportar respuestas');
+        if (global.whatsappManager) {
+          const responses = global.whatsappManager.getAllResponses();
+          socket.emit('responsesExport', { responses });
+        } else {
+          socket.emit('error', 'El gestor de WhatsApp no está inicializado');
+        }
+      } catch (err) {
+        console.error('Error al exportar respuestas:', err);
+        socket.emit('error', 'Error al exportar respuestas: ' + err.message);
+      }
+    });
+
+    // Importar respuestas
+    socket.on('importResponses', (data) => {
+      try {
+        console.log(`Solicitud recibida para importar respuestas. Reemplazar: ${data.replace}`);
+        
+        if (!data.responses || typeof data.responses !== 'object') {
+          socket.emit('error', 'Formato de datos inválido');
+          return;
+        }
+        
+        if (global.whatsappManager) {
+          // Obtener respuestas actuales si no es reemplazo total
+          let currentResponses = {};
+          if (!data.replace) {
+            currentResponses = global.whatsappManager.getAllResponses();
+          }
+          
+          // Combinar respuestas actuales con las nuevas
+          const mergedResponses = {...currentResponses, ...data.responses};
+          
+          // Verificar cada respuesta e importarla
+          let importedCount = 0;
+          for (const [trigger, response] of Object.entries(mergedResponses)) {
+            if (typeof trigger === 'string' && typeof response === 'string') {
+              global.whatsappManager.updateResponse(trigger, response);
+              importedCount++;
+            }
+          }
+          
+          socket.emit('responsesImported', { count: importedCount });
+          io.emit('responsesUpdated');
+          
+          // Recargar respuestas en la interfaz
+          const responses = global.whatsappManager.getAllResponses();
+          socket.emit('responsesList', responses);
+          
+          console.log(`Importación completada: ${importedCount} respuestas importadas`);
+        } else {
+          socket.emit('error', 'El gestor de WhatsApp no está inicializado');
+        }
+      } catch (err) {
+        console.error('Error al importar respuestas:', err);
+        socket.emit('error', 'Error al importar respuestas: ' + err.message);
       }
     });
 
