@@ -2,4 +2,4 @@
 echo "node_modules/" >> .gitignore
 echo ".local-chromium/" >> .gitignore
 echo "*.exe" >> .gitignore
-echo "*.dll" >> .gitignore
+echo "*.dll" >> .gitignore"node_modules/" 
