@@ -417,9 +417,7 @@ class WhatsAppManager {
         active: (this.activeAccount && this.activeAccount.phoneNumber === phoneNumber)
       });
 
-   return;
-    }
-  }
+   
   
 
       // Implementar un reintento exponencial
