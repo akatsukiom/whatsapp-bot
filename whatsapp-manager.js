@@ -601,19 +601,13 @@ class WhatsAppManager {
             accountObj.lastReconnectAttempt = Date.now();
           }
           
-          // Corrección: Tratar de reinicializar con try-catch para manejar errores de objeto undefined
           try {
             client.initialize().catch(err => {
               utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
               
-              // Si el error contiene "RegistrationUtils", es un problema común con la biblioteca
               if (err.message && err.message.includes('RegistrationUtils')) {
                 utils.log('Detectado error de RegistrationUtils, intentando regenerar QR...', 'warning');
-                
-                // Intentar recrear la sesión
                 this.cleanSession(sessionName);
-                
-                // Programar un nuevo intento en unos segundos
                 setTimeout(() => {
                   this.io.emit('status', {
                     sessionName,
@@ -623,7 +617,6 @@ class WhatsAppManager {
                     progress: 20,
                     active: true
                   });
-                  
                   this.regenerateQR(sessionName).catch(regError => {
                     utils.log(`Error al regenerar QR después del error: ${regError.message}`, 'error');
                   });
@@ -632,8 +625,6 @@ class WhatsAppManager {
               
               if (accountObj) {
                 accountObj.lastError = err.message;
-                
-                // Emitir estado actualizado con el error
                 this.io.emit('status', {
                   sessionName,
                   phoneNumber,
@@ -646,17 +637,12 @@ class WhatsAppManager {
             });
           } catch (initError) {
             utils.log(`Error al inicializar cliente: ${initError.message}`, 'error');
-            
-            // Manejo especial para el error de RegistrationUtils
             if (initError.message && initError.message.includes('RegistrationUtils')) {
               utils.log('Error de RegistrationUtils, limpiando sesión para un nuevo intento', 'warning');
               this.cleanSession(sessionName);
             }
-            
             if (accountObj) {
               accountObj.lastError = initError.message;
-              
-              // Emitir estado de error
               this.io.emit('status', {
                 sessionName,
                 phoneNumber,
@@ -672,8 +658,6 @@ class WhatsAppManager {
           if (accountObj) {
             accountObj.lastError = error.message;
           }
-          
-          // Emitir estado de error
           this.io.emit('status', {
             sessionName,
             phoneNumber,
@@ -696,17 +680,12 @@ class WhatsAppManager {
       active: true
     });
 
-    // Inicializamos con manejo adicional de errores
     try {
       client.initialize().catch(err => {
         utils.log(`Error al inicializar cliente ${phoneNumber}: ${err.message}`, 'error');
-        
-        // Manejo especial para el error de RegistrationUtils
         if (err.message && err.message.includes('RegistrationUtils')) {
           utils.log('Error de RegistrationUtils al inicializar, limpiando sesión', 'warning');
           this.cleanSession(sessionName);
-          
-          // Programar un nuevo intento
           setTimeout(() => {
             utils.log('Intentando regenerar QR después de limpiar sesión...', 'info');
             this.regenerateQR(sessionName).catch(regError => {
@@ -715,14 +694,12 @@ class WhatsAppManager {
           }, 5000);
         }
         
-        // Guardar el error para mostrarlo en la interfaz
         const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
         if (accountObj) {
           accountObj.lastError = err.message;
           accountObj.status = 'error';
         }
         
-        // Emitir estado de error
         this.io.emit('status', {
           sessionName,
           phoneNumber,
@@ -734,8 +711,6 @@ class WhatsAppManager {
       });
     } catch (error) {
       utils.log(`Excepción durante la inicialización: ${error.message}`, 'error');
-      
-      // Emitir estado de error
       this.io.emit('status', {
         sessionName,
         phoneNumber,
@@ -790,7 +765,6 @@ class WhatsAppManager {
       const account = this.accounts[accountIndex];
       utils.log(`Intentando cerrar sesión de la cuenta ${account.phoneNumber}`, 'info');
       
-      // Intentar cerrar sesión con manejo de errores mejorado
       try {
         if (account.client) {
           await account.client.logout();
@@ -798,14 +772,11 @@ class WhatsAppManager {
         }
       } catch (logoutError) {
         utils.log(`Error al cerrar sesión: ${logoutError.message}. Intentando limpieza manual.`, 'warning');
-        // Continuar con la limpieza manual incluso si hay error en logout()
       }
 
-      // Actualizar estado de la cuenta
       account.status = 'disconnected';
       account.lastError = 'Cerrado por usuario';
       
-      // Emitir estado actualizado
       this.io.emit('status', {
         sessionName: account.sessionName,
         phoneNumber: account.phoneNumber,
@@ -815,7 +786,6 @@ class WhatsAppManager {
         active: true
       });
       
-      // Eliminar carpeta de sesión siempre
       const sessionDir = `${config.paths.sessions}/${sessionName}`;
       if (fs.existsSync(sessionDir)) {
         try {
@@ -844,7 +814,6 @@ class WhatsAppManager {
       const account = this.accounts[accountIndex];
       utils.log(`Regenerando QR para la cuenta ${account.phoneNumber}`, 'info');
       
-      // Emitir estado de inicio de regeneración
       this.io.emit('qrRefreshStarted', { sessionName });
       this.io.emit('status', {
         sessionName: account.sessionName,
@@ -855,10 +824,8 @@ class WhatsAppManager {
         active: true
       });
       
-      // Limpiar sesión anterior siempre para evitar problemas
       this.cleanSession(sessionName);
       
-      // Emitir estado actualizado
       this.io.emit('status', {
         sessionName: account.sessionName,
         phoneNumber: account.phoneNumber,
@@ -868,10 +835,8 @@ class WhatsAppManager {
         active: true
       });
       
-      // Esperar un segundo para evitar condiciones de carrera
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Crear un nuevo cliente para evitar problemas con el anterior
       const newClient = new Client({
         authStrategy: new LocalAuth({
           clientId: sessionName,
@@ -890,12 +855,10 @@ class WhatsAppManager {
         qrMaxRetries: 5
       });
       
-      // Transferir los event listeners importantes
       newClient.on('qr', (qr) => {
         utils.log(`Nuevo QR generado para ${account.phoneNumber}`, 'success');
         this.isGeneratingQR = true;
         
-        // Emitir estado de espera de escaneo
         this.io.emit('status', {
           sessionName,
           phoneNumber: account.phoneNumber,
@@ -910,7 +873,6 @@ class WhatsAppManager {
             utils.log(`Error al generar QR: ${err.message}`, 'error');
             return;
           }
-          // Emitir QR al panel
           this.io.emit('qr', {
             sessionName,
             phoneNumber: account.phoneNumber,
@@ -923,12 +885,10 @@ class WhatsAppManager {
         utils.log(`Cliente regenerado ${account.phoneNumber} está listo!`, 'success');
         this.isGeneratingQR = false;
         
-        // Actualizar estado de la cuenta
         account.status = 'ready';
         account.lastError = null;
         account.client = newClient;
         
-        // Actualizar estado con progreso completo
         this.io.emit('status', {
           sessionName,
           phoneNumber: account.phoneNumber,
@@ -942,11 +902,9 @@ class WhatsAppManager {
       newClient.on('auth_failure', (msg) => {
         utils.log(`Error de autenticación al regenerar para ${account.phoneNumber}: ${msg}`, 'error');
         
-        // Actualizar estado de la cuenta
         account.status = 'error';
         account.lastError = msg;
         
-        // Emitir estado de error
         this.io.emit('status', {
           sessionName,
           phoneNumber: account.phoneNumber,
@@ -956,14 +914,12 @@ class WhatsAppManager {
           active: true
         });
         
-        // Emitir error específico de regeneración
         this.io.emit('qrRefreshError', {
           sessionName,
           error: msg
         });
       });
       
-      // Otros eventos importantes
       newClient.on('message', async (message) => {
         if (this.isAdminMessage(message)) {
           this.handleAdminCommand(message, newClient);
@@ -988,25 +944,18 @@ class WhatsAppManager {
         });
       });
       
-      // Inicializar el nuevo cliente
       try {
         await newClient.initialize();
-        // Reemplazar el cliente anterior con el nuevo
         account.client = newClient;
         return true;
       } catch (initError) {
         utils.log(`Error al inicializar cliente regenerado: ${initError.message}`, 'error');
-        
-        // Emitir error específico de regeneración
         this.io.emit('qrRefreshError', {
           sessionName,
           error: initError.message
         });
-        
         account.lastError = initError.message;
         account.status = 'error';
-        
-        // Emitir estado de error
         this.io.emit('status', {
           sessionName,
           phoneNumber: account.phoneNumber,
@@ -1015,23 +964,19 @@ class WhatsAppManager {
           progress: 0,
           active: true
         });
-        
         throw initError;
       }
     } catch (error) {
       utils.log(`Error en regenerateQR: ${error.message}`, 'error');
-      
-      // Emitir error específico de regeneración
       this.io.emit('qrRefreshError', {
         sessionName,
         error: error.message
       });
-      
       throw error;
     }
   }
 
- // Verificar si es mensaje de administrador
+  // Verificar si es mensaje de administrador
   isAdminMessage(message) {
     return config.whatsapp.adminNumbers.includes(message.from) && message.body.startsWith('!');
   }
@@ -1075,7 +1020,6 @@ class WhatsAppManager {
       return;
     }
 
-    // Otros comandos
     const params = message.body.split(' ').slice(1).join(' ');
     switch (command) {
       case '!learn':
@@ -1150,7 +1094,6 @@ class WhatsAppManager {
         if (this.accounts.length > 0 && this.accounts[0].client) {
           client.sendMessage(message.from, `Intentando reconectar la cuenta ${this.accounts[0].phoneNumber}...`);
           
-          // Emitir estado de reconexión
           this.io.emit('status', {
             sessionName: this.accounts[0].sessionName,
             phoneNumber: this.accounts[0].phoneNumber,
@@ -1199,9 +1142,9 @@ class WhatsAppManager {
       return;
     }
 
+    // Si es chat privado, no se responde
     if (!isGroup) {
-      utils.log('Enviando mensaje de redirección (chat privado)', 'info');
-      await client.sendMessage(message.from, config.whatsapp.redirectMessage);
+      utils.log('Mensaje privado ignorado', 'info');
       return;
     }
 
@@ -1256,7 +1199,6 @@ class WhatsAppManager {
         await clientToUse.sendMessage(message.from, response);
         utils.log('Respuesta enviada exitosamente', 'success');
 
-        // Emitir respuesta al panel
         if (this.io) {
           this.io.emit('botChatMessage', {
             from: 'BOT',
@@ -1279,20 +1221,14 @@ class WhatsAppManager {
         }
       }
     } else {
-      // Intenta generar una respuesta con IA antes de reenviar al administrador
       utils.log('No se encontró respuesta en la base de conocimiento, consultando a la IA...', 'info');
 
       try {
-        // Genera respuesta con OpenAI
         const aiResponse = await aiHandler.generateResponse(messageText);
-        
         utils.log(`Respuesta generada por IA: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
-        
-        // Enviar la respuesta generada por la IA
         const clientToUse = this.activeAccount ? this.activeAccount.client : client;
         await clientToUse.sendMessage(message.from, aiResponse);
         
-        // Emitir respuesta al panel
         if (this.io) {
           this.io.emit('botChatMessage', {
             from: 'BOT-AI',
@@ -1300,8 +1236,6 @@ class WhatsAppManager {
           });
         }
         
-        // También reenviar al administrador para que pueda verificar y posiblemente
-        // guardar la respuesta en la base de conocimiento
         this.forwardToAdmin(message, client, isGroup, 'Respuesta generada por IA');
         
       } catch (aiError) {
@@ -1396,7 +1330,6 @@ class WhatsAppManager {
   
   // Verificar y reconectar cuenta inactiva
   checkAndReconnectInactiveAccounts() {
-    // Si no hay cuentas o la única cuenta está conectada, no hacer nada
     if (this.accounts.length === 0 || 
         (this.activeAccount && 
          (this.activeAccount.status === 'ready' || 
@@ -1404,15 +1337,12 @@ class WhatsAppManager {
       return;
     }
     
-    // Si estamos en proceso de generación de QR, no intentar reconectar
     if (this.isGeneratingQR) {
       utils.log('Generando código QR, no se intentará reconectar', 'info');
       return;
     }
     
     const now = Date.now();
-    
-    // Solo reconectar si la única cuenta está desconectada y no está en proceso de reconexión
     const account = this.accounts[0];
     if (account && 
         account.status !== 'ready' && 
@@ -1423,7 +1353,6 @@ class WhatsAppManager {
       utils.log(`Intentando reconectar cuenta: ${account.phoneNumber}`, 'info');
       account.lastReconnectAttempt = now;
       
-      // Emitir estado de reconexión con barra de progreso
       this.io.emit('status', {
         sessionName: account.sessionName,
         phoneNumber: account.phoneNumber,
@@ -1433,12 +1362,9 @@ class WhatsAppManager {
         active: true
       });
       
-      // Si hay error de RegistrationUtils, limpiar sesión y regenerar QR
       if (account.lastError && account.lastError.includes('RegistrationUtils')) {
         utils.log('Detectado error de RegistrationUtils, regenerando sesión...', 'warning');
         this.cleanSession(account.sessionName);
-        
-        // Intentar regenerar QR
         setTimeout(() => {
           this.regenerateQR(account.sessionName).catch(err => {
             utils.log(`Error al regenerar QR durante reconexión: ${err.message}`, 'error');
@@ -1451,7 +1377,6 @@ class WhatsAppManager {
         account.client.initialize().catch(err => {
           utils.log(`Error al reconectar ${account.phoneNumber}: ${err.message}`, 'error');
           account.lastError = err.message;
-          
           this.io.emit('status', {
             sessionName: account.sessionName,
             phoneNumber: account.phoneNumber,
@@ -1464,8 +1389,6 @@ class WhatsAppManager {
       } catch (error) {
         utils.log(`Excepción al reconectar ${account.phoneNumber}: ${error.message}`, 'error');
         account.lastError = error.message;
-        
-        // Emitir estado de error
         this.io.emit('status', {
           sessionName: account.sessionName,
           phoneNumber: account.phoneNumber,
