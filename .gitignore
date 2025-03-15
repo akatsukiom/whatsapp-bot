@@ -1,6 +1,6 @@
 # Ignorar la carpeta node_modules
 node_modules/
-
+.env
 # Ignorar los archivos de Chromium descargados por Puppeteer
 .local-chromium/
 

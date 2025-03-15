@@ -1,16 +1,29 @@
 // ai-handler.js
 const { OpenAI } = require('openai');
 const config = require('./config');
+const utils = require('./utils');
 
 class AIHandler {
   constructor() {
     this.openai = new OpenAI({
-      apiKey: config.openai.apiKey
+      apiKey: process.env.OPENAI_API_KEY || config.openai.apiKey
     });
+    
+    // Validar si hay una API key configurada
+    if (!this.openai.apiKey) {
+      utils.log('No se ha configurado API key de OpenAI. Las respuestas generadas por IA no estarán disponibles.', 'warning');
+    }
   }
 
   async generateResponse(message) {
     try {
+      // Verificar si hay API key configurada
+      if (!this.openai.apiKey) {
+        return `Lo siento, no puedo procesar tu consulta porque no se ha configurado la integración con OpenAI. ${config.openai.privateMessage}`;
+      }
+
+      utils.log(`Generando respuesta con OpenAI para: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`, 'info');
+      
       const completion = await this.openai.chat.completions.create({
         model: config.openai.model,
         messages: [
@@ -31,12 +44,16 @@ class AIHandler {
       
       // Si está configurado para siempre redireccionar al privado
       if (config.openai.privateRedirect) {
-        aiResponse += `\n\n${config.openai.privateMessage}`;
+        // Verificar si la respuesta ya incluye el número privado para evitar duplicación
+        if (!aiResponse.includes(config.openai.privateNumber)) {
+          aiResponse += `\n\n${config.openai.privateMessage}`;
+        }
       }
       
+      utils.log(`Respuesta generada: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
       return aiResponse;
     } catch (error) {
-      console.error('Error al generar respuesta con OpenAI:', error);
+      utils.log(`Error al generar respuesta con OpenAI: ${error.message}`, 'error');
       return `Lo siento, no pude procesar tu consulta. ${config.openai.privateMessage}`;
     }
   }

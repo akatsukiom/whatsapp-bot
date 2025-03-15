@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const utils = require('./utils');
+const dotenv = require('dotenv');
 
 function setupServer() {
   const app = express();
@@ -57,7 +58,7 @@ function setupServer() {
     socket.on('getAIConfig', () => {
       try {
         socket.emit('aiConfig', {
-          apiKey: config.openai.apiKey ? '********' : '',
+          apiKey: process.env.OPENAI_API_KEY ? '********' : '',
           model: config.openai.model,
           privateRedirect: config.openai.privateRedirect,
           privateMessage: config.openai.privateMessage
@@ -73,43 +74,46 @@ function setupServer() {
       try {
         console.log('Actualizando configuración de IA');
         
-        // Guardar la configuración en el archivo config.js
-        const configPath = path.join(__dirname, 'config.js');
-        let configContent = fs.readFileSync(configPath, 'utf8');
+        // Crear o actualizar archivo .env
+        let envContent = '';
         
-        // Actualizar cada valor en el archivo de configuración
-        
-        // Actualizar API Key si se proporciona una nueva
+        // Si hay una API key nueva y no es el placeholder, actualizarla
         if (data.apiKey && data.apiKey !== '********') {
-          const apiKeyRegex = /(apiKey:.*?['"])(.*?)(['"],)/;
-          configContent = configContent.replace(apiKeyRegex, `$1${data.apiKey}$3`);
-          config.openai.apiKey = data.apiKey;
+          envContent += `OPENAI_API_KEY=${data.apiKey}\n`;
+          process.env.OPENAI_API_KEY = data.apiKey;
+        } else if (process.env.OPENAI_API_KEY) {
+          // Mantener la API key existente
+          envContent += `OPENAI_API_KEY=${process.env.OPENAI_API_KEY}\n`;
         }
         
-        // Actualizar modelo
-        const modelRegex = /(model:.*?['"])(.*?)(['"],)/;
-        configContent = configContent.replace(modelRegex, `$1${data.model || 'gpt-3.5-turbo'}$3`);
+        // Guardar resto de configuraciones en el .env
+        envContent += `OPENAI_MODEL=${data.model || 'gpt-3.5-turbo'}\n`;
+        envContent += `PRIVATE_REDIRECT=${data.privateRedirect !== undefined ? data.privateRedirect : true}\n`;
+        envContent += `PRIVATE_MESSAGE=${data.privateMessage || config.openai.privateMessage}\n`;
+        
+        // Crear carpeta si no existe
+        const envDir = path.dirname('.env');
+        if (!fs.existsSync(envDir)) {
+          fs.mkdirSync(envDir, { recursive: true });
+        }
+        
+        // Guardar archivo .env
+        fs.writeFileSync('.env', envContent);
+        
+        // Recargar variables de entorno
+        dotenv.config();
+        
+        // Actualizar configuración en memoria
         config.openai.model = data.model || 'gpt-3.5-turbo';
-        
-        // Actualizar privateRedirect
-        const redirectRegex = /(privateRedirect:.*?)([^,]*)(,)/;
-        configContent = configContent.replace(redirectRegex, `$1${data.privateRedirect !== undefined ? data.privateRedirect : true}$3`);
         config.openai.privateRedirect = data.privateRedirect !== undefined ? data.privateRedirect : true;
-        
-        // Actualizar privateMessage
-        const messageRegex = /(privateMessage:.*?["'])(.*?)(["'],)/;
-        configContent = configContent.replace(messageRegex, `$1${data.privateMessage || config.openai.privateMessage}$3`);
         config.openai.privateMessage = data.privateMessage || config.openai.privateMessage;
-        
-        // Guardar cambios en el archivo
-        fs.writeFileSync(configPath, configContent);
-        console.log('Archivo de configuración actualizado');
         
         // Reiniciar el handler de IA si existe
         if (global.aiHandler) {
           global.aiHandler = require('./ai-handler');
         }
         
+        console.log('Configuración de IA actualizada correctamente');
         socket.emit('aiConfigUpdated');
       } catch (err) {
         console.error('Error al actualizar configuración de IA:', err);

@@ -1,4 +1,5 @@
 // config.js
+require('dotenv').config();
 
 module.exports = {
   // Configuración del servidor
@@ -8,13 +9,13 @@ module.exports = {
 
   // Configuración de OpenAI
   openai: {
-    apiKey: process.env.OPENAI_API_KEY || 'tu-api-key-aquí',
-    model: 'gpt-3.5-turbo',
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
     maxTokens: 150,
     temperature: 0.7,
-    privateRedirect: true, // Si es true, siempre redirecciona al privado
-    privateNumber: '4961260597', // Número al que redirigir
-    privateMessage: "Gracias por tu consulta. Para brindarte una atención personalizada, por favor envíame un mensaje al privado: 4961260597"
+    privateRedirect: process.env.PRIVATE_REDIRECT === 'false' ? false : true,
+    privateNumber: process.env.PRIVATE_NUMBER || '4961260597',
+    privateMessage: process.env.PRIVATE_MESSAGE || "Gracias por tu consulta. Para brindarte una atención personalizada, por favor envíame un mensaje al privado: 4961260597"
   },
   
   // Configuración de WhatsApp
