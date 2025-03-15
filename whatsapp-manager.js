@@ -338,7 +338,7 @@ class WhatsAppManager {
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: config.whatsapp.puppeteerArgs,
         // Agregar opciones de persistencia para mejorar la reconexión
-        userDataDir: path.join(sessionFolder, 'puppeteer_data')
+        //userDataDir: path.join(sessionFolder, 'puppeteer_data')
       },
       restartOnAuthFail: true, // Intentar reiniciar en caso de fallo de autenticación
       takeoverOnConflict: true, // Permite tomar control de una sesión existente
