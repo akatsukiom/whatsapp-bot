@@ -4,8 +4,7 @@ const fs = require('fs');
 const config = require('../config');
 
 function createIndexHtml() {
-  const htmlContent = `
-<!DOCTYPE html>
+  const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -189,7 +188,7 @@ function createIndexHtml() {
       </div>
     </div>
     
-    <!-- Botón para ir al panel de administración -->
+   <!-- Botón para ir al panel de administración -->
     <div class="text-center mt-4">
       <a href="/admin" class="btn btn-success btn-lg">
         <i class="bi bi-gear-fill me-2"></i>Ir al Panel de Administración
