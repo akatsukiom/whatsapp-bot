@@ -1,4 +1,4 @@
-// templates/index-template.js con el error corregido
+// Plantilla para la página principal
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
@@ -283,10 +283,8 @@ function createIndexHtml() {
       
       const entry = document.createElement('div');
       entry.className = 'log-entry ' + colors[type];
-      entry.innerHTML = \`
-        <i class="bi bi-\${icons[type]} me-1"></i>
-        <small>\${now}</small> - \${message}
-      \`;
+      entry.innerHTML = '<i class="bi bi-' + icons[type] + ' me-1"></i>' +
+                        '<small>' + now + '</small> - ' + message;
       
       // Remover "Esperando eventos..." si existe
       if (eventLog.querySelector('.text-muted')) {
@@ -439,20 +437,33 @@ function createIndexHtml() {
           break;
       }
       
-      accountStatus.innerHTML = \`<span class="status-badge \${badgeClass}">\${statusText}</span>\`;
+      accountStatus.innerHTML = '<span class="status-badge ' + badgeClass + '">' + statusText + '</span>';
       
       // Agregar al log si es un cambio de estado importante
       if (data.status === 'ready' || data.status === 'authenticated' || data.status === 'error' || data.status === 'disconnected') {
-        addLogEntry(\`Estado: \${statusText}\${data.detail ? ' - ' + data.detail : ''}\`, 
+        addLogEntry('Estado: ' + statusText + (data.detail ? ' - ' + data.detail : ''), 
                     data.status === 'ready' || data.status === 'authenticated' ? 'success' : 
                     data.status === 'error' ? 'error' : 'warning');
+      }
+    });
+    
+    // Escuchar evento para redirigir al panel de administración
+    socket.on('redirectToAdmin', (data) => {
+      if (data.isConnected) {
+        console.log('WhatsApp conectado correctamente. Redirigiendo al panel de administración...');
+        // Mostrar notificación
+        addLogEntry('WhatsApp conectado. Redirigiendo al panel de administración...', 'success');
+        // Esperar 2 segundos antes de redirigir para que el usuario pueda ver el mensaje
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 2000);
       }
     });
     
     // Recibir código QR
     socket.on('qr', (data) => {
       // Actualizar QR en la interfaz
-      qrDisplay.innerHTML = \`<img src="\${data.qrDataUrl}" alt="Código QR" class="img-fluid">\`;
+      qrDisplay.innerHTML = '<img src="' + data.qrDataUrl + '" alt="Código QR" class="img-fluid">';
       
       // Actualizar indicadores
       accountStatus.innerHTML = '<span class="status-badge status-waiting">Esperando escaneo</span>';
@@ -483,7 +494,7 @@ function createIndexHtml() {
         connectionProgress.setAttribute('aria-valuenow', 0);
         statusDetail.textContent = 'Esperando nuevo código QR...';
       } else {
-        addLogEntry(\`Error al cerrar sesión: \${data.error || 'Error desconocido'}\`, 'error');
+        addLogEntry('Error al cerrar sesión: ' + (data.error || 'Error desconocido'), 'error');
       }
     });
     
@@ -493,8 +504,8 @@ function createIndexHtml() {
       refreshQrBtn.disabled = false;
       refreshQrBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Generar nuevo QR';
       
-      addLogEntry(\`Error al regenerar QR: \${data.error}\`, 'error');
-      qrDisplay.innerHTML = \`<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>Error al generar QR: \${data.error}</div>\`;
+      addLogEntry('Error al regenerar QR: ' + data.error, 'error');
+      qrDisplay.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>Error al generar QR: ' + data.error + '</div>';
     });
     
     // Recibir logs de consola

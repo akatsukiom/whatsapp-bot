@@ -248,6 +248,9 @@ class WhatsAppManager {
             status = 'ready';
             progress = 100;
             detail = '¡Conectado exitosamente!';
+            
+            // Redirigir al panel de administración si está conectado
+            this.io.emit('redirectToAdmin', { isConnected: true });
           } else if (account.client && account.client.authStrategy) {
             const authStrategy = account.client.authStrategy;
             if (
@@ -307,6 +310,13 @@ class WhatsAppManager {
   addAccount(phoneNumber, sessionName) {
     const sessionFolder = path.join(config.paths.sessions, sessionName);
 
+    // Verificar si ya existe una sesión guardada
+    const sessionExists = fs.existsSync(path.join(sessionFolder, 'session'));
+    
+    if (sessionExists) {
+      utils.log(`Encontrada sesión existente para ${phoneNumber} en ${sessionFolder}`, 'info');
+    }
+
     // Emitir estado de inicialización con barra de progreso
     this.io.emit('status', {
       sessionName,
@@ -317,7 +327,7 @@ class WhatsAppManager {
       active: true
     });
 
-    // Crear cliente de WhatsApp
+    // Crear cliente de WhatsApp con opciones mejoradas para persistencia
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: sessionName,
@@ -326,7 +336,18 @@ class WhatsAppManager {
       puppeteer: {
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: config.whatsapp.puppeteerArgs
+        args: config.whatsapp.puppeteerArgs,
+        // Agregar opciones de persistencia para mejorar la reconexión
+        userDataDir: path.join(sessionFolder, 'puppeteer_data')
+      },
+      restartOnAuthFail: true, // Intentar reiniciar en caso de fallo de autenticación
+      takeoverOnConflict: true, // Permite tomar control de una sesión existente
+      authTimeoutMs: 60000, // Aumentar timeout para autenticación
+      qrMaxRetries: 5, // Número máximo de intentos de escaneo QR
+      // Callback cuando hay un evento de autenticación fallida
+      authFailHandler: () => {
+        utils.log(`Error de autenticación para ${phoneNumber}, intentando recuperar...`, 'warning');
+        return true; // Intentar reiniciar
       }
     });
 
@@ -387,6 +408,22 @@ class WhatsAppManager {
       utils.log(`Cliente ${phoneNumber} está listo!`, 'success');
       this.isGeneratingQR = false;
       
+      // Guardar información de estado en un archivo separado para mejor diagnóstico
+      try {
+        const statusInfo = {
+          phoneNumber,
+          sessionName,
+          status: 'ready',
+          lastConnected: new Date().toISOString()
+        };
+        
+        const statusFilePath = path.join(sessionFolder, 'status.json');
+        fs.writeFileSync(statusFilePath, JSON.stringify(statusInfo, null, 2));
+        utils.log(`Estado guardado en ${statusFilePath}`, 'info');
+      } catch (error) {
+        utils.log(`Error al guardar información de estado: ${error.message}`, 'warning');
+      }
+      
       // Actualizar estado de la cuenta
       const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
       if (accountObj) {
@@ -407,6 +444,9 @@ class WhatsAppManager {
       
       // Enviar mensaje especial al log
       this.io.emit('consoleLog', `✅ CONECTADO EXITOSAMENTE: ${phoneNumber}`);
+      
+      // Enviar evento para redirigir al panel de administración
+      this.io.emit('redirectToAdmin', { isConnected: true });
       
       // Limpiar archivo QR si existe
       const qrFilePath = `${config.paths.public}/qr-${sessionName}.png`;
@@ -436,6 +476,35 @@ class WhatsAppManager {
         progress: 90,
         active: true
       });
+    });
+
+    // Evento de autenticación fallida
+    client.on('auth_failure', (msg) => {
+      utils.log(`Error de autenticación para ${phoneNumber}: ${msg}`, 'error');
+      
+      // Actualizar estado de la cuenta
+      const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
+      if (accountObj) {
+        accountObj.status = 'error';
+        accountObj.lastError = msg;
+      }
+      
+      this.io.emit('status', {
+        sessionName,
+        phoneNumber,
+        status: 'error',
+        detail: `Error de autenticación: ${msg}`,
+        progress: 0,
+        active: true
+      });
+      
+      // Intentar regenerar la sesión si es posible
+      setTimeout(() => {
+        utils.log(`Intentando regenerar sesión para ${phoneNumber}...`, 'info');
+        this.regenerateQR(sessionName).catch(err => {
+          utils.log(`Error al regenerar sesión: ${err.message}`, 'error');
+        });
+      }, 5000);
     });
 
     client.on('message', async (message) => {
@@ -478,8 +547,13 @@ class WhatsAppManager {
         const sessionDir = `${config.paths.sessions}/${sessionName}`;
         if (fs.existsSync(sessionDir)) {
           try {
-            fs.rmdirSync(sessionDir, { recursive: true });
-            utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+            fs.rm(sessionDir, { recursive: true }, (err) => {
+              if (err) {
+                utils.log(`Error al eliminar directorio de sesión: ${err.message}`, 'error');
+              } else {
+                utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+              }
+            });
           } catch (error) {
             utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
           }
@@ -642,8 +716,13 @@ class WhatsAppManager {
         // Eliminar carpeta de sesión
         const sessionDir = `${config.paths.sessions}/${sessionName}`;
         if (fs.existsSync(sessionDir)) {
-          fs.rmdirSync(sessionDir, { recursive: true });
-          utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+          fs.rm(sessionDir, { recursive: true }, (err) => {
+            if (err) {
+              utils.log(`Error al eliminar directorio de sesión: ${err.message}`, 'error');
+            } else {
+              utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+            }
+          });
         }
         
         return true;
@@ -690,8 +769,17 @@ class WhatsAppManager {
         // Eliminar carpeta de sesión
         const sessionDir = `${config.paths.sessions}/${sessionName}`;
         if (fs.existsSync(sessionDir)) {
-          fs.rmdirSync(sessionDir, { recursive: true });
-          utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+          try {
+            fs.rm(sessionDir, { recursive: true }, (err) => {
+              if (err) {
+                utils.log(`Error al eliminar directorio de sesión: ${err.message}`, 'error');
+              } else {
+                utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+              }
+            });
+          } catch (error) {
+            utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
+          }
         }
         
         // Reinicializar cliente
@@ -742,7 +830,7 @@ class WhatsAppManager {
     }
   }
 
-  // Verificar si es mensaje de administrador
+ // Verificar si es mensaje de administrador
   isAdminMessage(message) {
     return config.whatsapp.adminNumbers.includes(message.from) && message.body.startsWith('!');
   }
