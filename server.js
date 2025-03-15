@@ -73,14 +73,37 @@ function setupServer() {
       try {
         console.log('Actualizando configuración de IA');
         
-        // Solo actualizar la API key si se proporciona una nueva
+        // Guardar la configuración en el archivo config.js
+        const configPath = path.join(__dirname, 'config.js');
+        let configContent = fs.readFileSync(configPath, 'utf8');
+        
+        // Actualizar cada valor en el archivo de configuración
+        
+        // Actualizar API Key si se proporciona una nueva
         if (data.apiKey && data.apiKey !== '********') {
+          const apiKeyRegex = /(apiKey:.*?['"])(.*?)(['"],)/;
+          configContent = configContent.replace(apiKeyRegex, `$1${data.apiKey}$3`);
           config.openai.apiKey = data.apiKey;
         }
         
+        // Actualizar modelo
+        const modelRegex = /(model:.*?['"])(.*?)(['"],)/;
+        configContent = configContent.replace(modelRegex, `$1${data.model || 'gpt-3.5-turbo'}$3`);
         config.openai.model = data.model || 'gpt-3.5-turbo';
+        
+        // Actualizar privateRedirect
+        const redirectRegex = /(privateRedirect:.*?)([^,]*)(,)/;
+        configContent = configContent.replace(redirectRegex, `$1${data.privateRedirect !== undefined ? data.privateRedirect : true}$3`);
         config.openai.privateRedirect = data.privateRedirect !== undefined ? data.privateRedirect : true;
+        
+        // Actualizar privateMessage
+        const messageRegex = /(privateMessage:.*?["'])(.*?)(["'],)/;
+        configContent = configContent.replace(messageRegex, `$1${data.privateMessage || config.openai.privateMessage}$3`);
         config.openai.privateMessage = data.privateMessage || config.openai.privateMessage;
+        
+        // Guardar cambios en el archivo
+        fs.writeFileSync(configPath, configContent);
+        console.log('Archivo de configuración actualizado');
         
         // Reiniciar el handler de IA si existe
         if (global.aiHandler) {
@@ -128,8 +151,13 @@ function setupServer() {
                   socket.emit('accountLoggedOut', { sessionName, success: true });
                   const sessionDir = `${config.paths.sessions}/${sessionName}`;
                   if (fs.existsSync(sessionDir)) {
-                    fs.rmdirSync(sessionDir, { recursive: true });
-                    console.log(`Directorio de sesión eliminado: ${sessionDir}`);
+                    fs.rm(sessionDir, { recursive: true }, (err) => {
+                      if (err) {
+                        console.error(`Error al eliminar directorio de sesión: ${err.message}`);
+                      } else {
+                        console.log(`Directorio de sesión eliminado: ${sessionDir}`);
+                      }
+                    });
                   }
                 })
                 .catch(err => {
