@@ -1,4 +1,4 @@
-// Plantilla para la página principal
+// templates/index-template.js con el error corregido
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
@@ -409,7 +409,8 @@ function createIndexHtml() {
           badgeClass = 'status-ready';
           statusText = 'Conectado';
           logoutBtn.disabled = false;
-          addLogEntry(`WhatsApp conectado exitosamente: ${data.phoneNumber}`, 'success');
+          // Corregido aquí: evitar el uso de backticks dentro del script
+          addLogEntry('WhatsApp conectado exitosamente: ' + data.phoneNumber, 'success');
           break;
         case 'authenticated':
           badgeClass = 'status-ready';
