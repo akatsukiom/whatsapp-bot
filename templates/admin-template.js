@@ -1,10 +1,4 @@
-// templates/admin-template.js - Corregido
-const path = require('path');
-const fs = require('fs');
-const config = require('../config');
-
-function createAdminHtml() {
-  const adminHtmlContent = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -157,11 +151,12 @@ function createAdminHtml() {
     <!-- Panel de configuración de IA -->
     <div class="admin-panel">
       <h3><i class="bi bi-robot me-2"></i>Configuración de IA (OpenAI)</h3>
+      <div class="alert alert-info">
+        <i class="bi bi-info-circle-fill me-2"></i>
+        <strong>Nota:</strong> La API Key de OpenAI ahora se gestiona a través del archivo <code>.env</code> en el servidor. 
+        Por motivos de seguridad, este valor no se puede editar desde la interfaz web.
+      </div>
       <form id="aiConfigForm">
-        <div class="mb-3">
-          <label for="openaiApiKey" class="form-label">API Key de OpenAI</label>
-          <input type="password" class="form-control" id="openaiApiKey" placeholder="sk-...">
-        </div>
         <div class="mb-3">
           <label for="aiModel" class="form-label">Modelo</label>
           <select class="form-select" id="aiModel">
@@ -215,13 +210,8 @@ function createAdminHtml() {
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // Conectar a Socket.IO con opciones mejoradas
-    const socket = io({
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 10000
-    });
+    // Conectar a Socket.IO
+    const socket = io();
     
     // Elementos del DOM
     const addResponseForm = document.getElementById('addResponseForm');
@@ -239,9 +229,6 @@ function createAdminHtml() {
     const refreshBtn = document.getElementById('refreshResponses');
     const confirmImportBtn = document.getElementById('confirmImport');
     
-    // Inicializar modal para importar
-    const importModal = new bootstrap.Modal(document.getElementById('importModal'));
-    
     // Función para mostrar/ocultar overlay de carga
     function toggleLoading(show) {
       loadingOverlay.style.display = show ? 'flex' : 'none';
@@ -250,15 +237,17 @@ function createAdminHtml() {
     // Función para mostrar notificaciones (toast)
     function showToast(message, type = 'success') {
       const toastId = 'toast-' + Date.now();
-      const toastHtml = '<div id="' + toastId + '" class="toast align-items-center text-white bg-' + (type === 'success' ? 'success' : 'danger') + '" role="alert" aria-live="assertive" aria-atomic="true">' +
-                         '<div class="d-flex">' +
-                         '<div class="toast-body">' +
-                         '<i class="bi bi-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + '-fill me-2"></i>' +
-                         message +
-                         '</div>' +
-                         '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
-                         '</div>' +
-                         '</div>';
+      const toastHtml = `
+        <div id="${toastId}" class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
+          <div class="d-flex">
+            <div class="toast-body">
+              <i class="bi bi-${type === 'success' ? 'check-circle' : 'exclamation-circle'}-fill me-2"></i>
+              ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+        </div>
+      `;
       toastContainer.insertAdjacentHTML('beforeend', toastHtml);
       const toastElement = document.getElementById(toastId);
       const toast = new bootstrap.Toast(toastElement, {
@@ -273,7 +262,6 @@ function createAdminHtml() {
 
     // Recibir configuración de IA
     socket.on('aiConfig', (config) => {
-      document.getElementById('openaiApiKey').value = config.apiKey;
       document.getElementById('aiModel').value = config.model;
       document.getElementById('privateMessage').value = config.privateMessage;
       document.getElementById('alwaysRedirect').checked = config.privateRedirect;
@@ -284,19 +272,16 @@ function createAdminHtml() {
       e.preventDefault();
       
       const config = {
-        apiKey: document.getElementById('openaiApiKey').value,
         model: document.getElementById('aiModel').value,
         privateMessage: document.getElementById('privateMessage').value,
         privateRedirect: document.getElementById('alwaysRedirect').checked
       };
       
-      toggleLoading(true);
       socket.emit('updateAIConfig', config);
     });
 
     // Confirmar actualización
     socket.on('aiConfigUpdated', () => {
-      toggleLoading(false);
       showToast('Configuración de IA actualizada', 'success');
     });
 
@@ -314,32 +299,21 @@ function createAdminHtml() {
       for (const [trigger, response] of Object.entries(responses)) {
         const row = document.createElement('tr');
         
-        // Escape HTML para evitar inyección y formateo
-        const escapeHTML = (str) => {
-          return str
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-        };
-        
-        const escapedTrigger = escapeHTML(trigger);
-        const escapedResponse = escapeHTML(response);
-        
-        row.innerHTML = '<td>' + escapedTrigger + '</td>' +
-                        '<td>' + escapedResponse + '</td>' +
-                        '<td>' +
-                        '  <button class="btn btn-sm btn-warning edit-btn" data-trigger="' + escapedTrigger + '">' +
-                        '    <i class="bi bi-pencil-fill"></i> Editar' +
-                        '  </button>' +
-                        '  <button class="btn btn-sm btn-danger delete-btn" data-trigger="' + escapedTrigger + '">' +
-                        '    <i class="bi bi-trash-fill"></i> Eliminar' +
-                        '  </button>' +
-                        '  <button class="btn btn-sm btn-info quick-btn" data-trigger="' + escapedTrigger + '">' +
-                        '    <i class="bi bi-lightning-charge-fill"></i> Respuesta Rápida' +
-                        '  </button>' +
-                        '</td>';
+        row.innerHTML = `
+          <td>${trigger}</td>
+          <td>${response}</td>
+          <td>
+            <button class="btn btn-sm btn-warning edit-btn" data-trigger="${trigger}">
+              <i class="bi bi-pencil-fill"></i> Editar
+            </button>
+            <button class="btn btn-sm btn-danger delete-btn" data-trigger="${trigger}">
+              <i class="bi bi-trash-fill"></i> Eliminar
+            </button>
+            <button class="btn btn-sm btn-info quick-btn" data-trigger="${trigger}">
+              <i class="bi bi-lightning-charge-fill"></i> Respuesta Rápida
+            </button>
+          </td>
+        `;
         
         responsesTable.appendChild(row);
       }
@@ -410,7 +384,7 @@ function createAdminHtml() {
     
     socket.on('responsesImported', (data) => {
       toggleLoading(false);
-      showToast(data.count + ' respuestas importadas correctamente', 'success');
+      showToast(`${data.count} respuestas importadas correctamente`, 'success');
       socket.emit('getResponses');
     });
     
@@ -431,7 +405,7 @@ function createAdminHtml() {
     // Escuchar eventos para Mensajería en tiempo real
     socket.on('botChatMessage', (data) => {
       const entry = document.createElement('div');
-      entry.innerHTML = '<strong>' + data.from + ':</strong> ' + data.message;
+      entry.innerHTML = `<strong>${data.from}:</strong> ${data.message}`;
       botChatDiv.appendChild(entry);
       botChatDiv.scrollTop = botChatDiv.scrollHeight;
     });
@@ -441,20 +415,13 @@ function createAdminHtml() {
       const message = chatInput.value.trim();
       if (message) {
         socket.emit('adminChatMessage', message);
-        // También agregar el mensaje a la interfaz
-        const entry = document.createElement('div');
-        entry.innerHTML = '<strong>Tú:</strong> ' + message;
-        botChatDiv.appendChild(entry);
-        botChatDiv.scrollTop = botChatDiv.scrollHeight;
-        // Limpiar campo de entrada
         chatInput.value = '';
       }
     });
     
     // También permitir enviar con Enter
-    chatInput.addEventListener('keydown', (e) => {
+    chatInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
-        e.preventDefault();
         sendChatBtn.click();
       }
     });
@@ -472,7 +439,7 @@ function createAdminHtml() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'respuestas_whatsapp_' + new Date().toISOString().slice(0,10) + '.json';
+        a.download = `respuestas_whatsapp_${new Date().toISOString().slice(0,10)}.json`;
         document.body.appendChild(a);
         a.click();
         
@@ -488,6 +455,7 @@ function createAdminHtml() {
     
     // Mostrar modal para importar
     importBtn.addEventListener('click', () => {
+      const importModal = new bootstrap.Modal(document.getElementById('importModal'));
       importModal.show();
     });
     
@@ -521,6 +489,7 @@ function createAdminHtml() {
           });
           
           // Cerrar el modal
+          const importModal = bootstrap.Modal.getInstance(document.getElementById('importModal'));
           importModal.hide();
         } catch (error) {
           showToast('Error al analizar el archivo JSON: ' + error.message, 'error');
@@ -536,38 +505,10 @@ function createAdminHtml() {
       socket.emit('forceReload');
     });
 
-    // Eventos de conexión
-    socket.on('connect', () => {
-      showToast('Conectado al servidor', 'success');
-    });
-    
-    socket.on('disconnect', () => {
-      showToast('Desconectado del servidor. Intentando reconectar...', 'error');
-    });
-    
-    socket.on('reconnect', () => {
-      showToast('Reconectado al servidor', 'success');
-      socket.emit('getResponses');
-    });
-
-    // Mantener la conexión activa con un ping regular
+    // Mantener la conexión activa
     setInterval(() => {
-      if (socket.connected) {
-        socket.emit('ping');
-      }
+      socket.emit('ping');
     }, 30000);
   </script>
 </body>
-</html>`;
-
-  // Crear carpeta public si no existe
-  if (!fs.existsSync(config.paths.public)) {
-    fs.mkdirSync(config.paths.public, { recursive: true });
-  }
-  
-  // Guardar el HTML
-  fs.writeFileSync(path.join(config.paths.public, config.files.adminHtml), adminHtmlContent);
-  console.log('Archivo admin.html creado correctamente');
-}
-
-module.exports = createAdminHtml;
+</html>

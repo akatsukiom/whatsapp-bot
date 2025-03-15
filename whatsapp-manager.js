@@ -337,12 +337,13 @@ class WhatsAppManager {
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: config.whatsapp.puppeteerArgs,
-        // Agregar opciones de persistencia para mejorar la reconexión
-        //userDataDir: path.join(sessionFolder, 'puppeteer_data')
+        // Manejar mejor los errores en Puppeteer con timeouts más largos
+        defaultViewport: null,
+        timeout: 60000
       },
       restartOnAuthFail: true, // Intentar reiniciar en caso de fallo de autenticación
       takeoverOnConflict: true, // Permite tomar control de una sesión existente
-      authTimeoutMs: 60000, // Aumentar timeout para autenticación
+      authTimeoutMs: 120000, // Aumentar timeout para autenticación
       qrMaxRetries: 5, // Número máximo de intentos de escaneo QR
       // Callback cuando hay un evento de autenticación fallida
       authFailHandler: () => {
@@ -600,22 +601,72 @@ class WhatsAppManager {
             accountObj.lastReconnectAttempt = Date.now();
           }
           
-          client.initialize().catch(err => {
-            utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
-            if (accountObj) {
-              accountObj.lastError = err.message;
+          // Corrección: Tratar de reinicializar con try-catch para manejar errores de objeto undefined
+          try {
+            client.initialize().catch(err => {
+              utils.log(`Error al reinicializar cliente ${phoneNumber}: ${err.message}`, 'error');
               
-              // Emitir estado actualizado con el error
+              // Si el error contiene "RegistrationUtils", es un problema común con la biblioteca
+              if (err.message && err.message.includes('RegistrationUtils')) {
+                utils.log('Detectado error de RegistrationUtils, intentando regenerar QR...', 'warning');
+                
+                // Intentar recrear la sesión
+                this.cleanSession(sessionName);
+                
+                // Programar un nuevo intento en unos segundos
+                setTimeout(() => {
+                  this.io.emit('status', {
+                    sessionName,
+                    phoneNumber,
+                    status: 'initializing',
+                    detail: 'Recreando sesión después de error...',
+                    progress: 20,
+                    active: true
+                  });
+                  
+                  this.regenerateQR(sessionName).catch(regError => {
+                    utils.log(`Error al regenerar QR después del error: ${regError.message}`, 'error');
+                  });
+                }, 5000);
+              }
+              
+              if (accountObj) {
+                accountObj.lastError = err.message;
+                
+                // Emitir estado actualizado con el error
+                this.io.emit('status', {
+                  sessionName,
+                  phoneNumber,
+                  status: 'error',
+                  detail: `Error: ${err.message}`,
+                  progress: 0,
+                  active: true
+                });
+              }
+            });
+          } catch (initError) {
+            utils.log(`Error al inicializar cliente: ${initError.message}`, 'error');
+            
+            // Manejo especial para el error de RegistrationUtils
+            if (initError.message && initError.message.includes('RegistrationUtils')) {
+              utils.log('Error de RegistrationUtils, limpiando sesión para un nuevo intento', 'warning');
+              this.cleanSession(sessionName);
+            }
+            
+            if (accountObj) {
+              accountObj.lastError = initError.message;
+              
+              // Emitir estado de error
               this.io.emit('status', {
                 sessionName,
                 phoneNumber,
                 status: 'error',
-                detail: `Error: ${err.message}`,
+                detail: `Error: ${initError.message}`,
                 progress: 0,
                 active: true
               });
             }
-          });
+          }
         } catch (error) {
           utils.log(`Excepción al intentar reconectar ${phoneNumber}: ${error.message}`, 'error');
           if (accountObj) {
@@ -645,27 +696,55 @@ class WhatsAppManager {
       active: true
     });
 
-    // Inicializamos
-    client.initialize().catch(err => {
-      utils.log(`Error al inicializar cliente ${phoneNumber}: ${err.message}`, 'error');
-      
-      // Guardar el error para mostrarlo en la interfaz
-      const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
-      if (accountObj) {
-        accountObj.lastError = err.message;
-        accountObj.status = 'error';
-      }
+    // Inicializamos con manejo adicional de errores
+    try {
+      client.initialize().catch(err => {
+        utils.log(`Error al inicializar cliente ${phoneNumber}: ${err.message}`, 'error');
+        
+        // Manejo especial para el error de RegistrationUtils
+        if (err.message && err.message.includes('RegistrationUtils')) {
+          utils.log('Error de RegistrationUtils al inicializar, limpiando sesión', 'warning');
+          this.cleanSession(sessionName);
+          
+          // Programar un nuevo intento
+          setTimeout(() => {
+            utils.log('Intentando regenerar QR después de limpiar sesión...', 'info');
+            this.regenerateQR(sessionName).catch(regError => {
+              utils.log(`Error adicional al regenerar QR: ${regError.message}`, 'error');
+            });
+          }, 5000);
+        }
+        
+        // Guardar el error para mostrarlo en la interfaz
+        const accountObj = this.accounts.find(acc => acc.phoneNumber === phoneNumber);
+        if (accountObj) {
+          accountObj.lastError = err.message;
+          accountObj.status = 'error';
+        }
+        
+        // Emitir estado de error
+        this.io.emit('status', {
+          sessionName,
+          phoneNumber,
+          status: 'error',
+          detail: `Error: ${err.message}`,
+          progress: 0,
+          active: true
+        });
+      });
+    } catch (error) {
+      utils.log(`Excepción durante la inicialización: ${error.message}`, 'error');
       
       // Emitir estado de error
       this.io.emit('status', {
         sessionName,
         phoneNumber,
         status: 'error',
-        detail: `Error: ${err.message}`,
+        detail: `Error de inicialización: ${error.message}`,
         progress: 0,
         active: true
       });
-    });
+    }
 
     const account = {
       phoneNumber,
@@ -684,6 +763,22 @@ class WhatsAppManager {
     return 0;
   }
 
+  // Método para limpiar una sesión (para manejar errores de RegistrationUtils)
+  cleanSession(sessionName) {
+    try {
+      const sessionDir = `${config.paths.sessions}/${sessionName}`;
+      if (fs.existsSync(sessionDir)) {
+        utils.log(`Limpiando directorio de sesión: ${sessionDir}`, 'info');
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+        utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+      }
+      return true;
+    } catch (error) {
+      utils.log(`Error al limpiar sesión: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
   // Cerrar sesión
   async logoutAccount(sessionName) {
     try {
@@ -695,40 +790,43 @@ class WhatsAppManager {
       const account = this.accounts[accountIndex];
       utils.log(`Intentando cerrar sesión de la cuenta ${account.phoneNumber}`, 'info');
       
-      if (account.client) {
-        await account.client.logout();
-        utils.log(`Sesión cerrada para ${account.phoneNumber}`, 'success');
-
-        // Actualizar estado de la cuenta
-        account.status = 'disconnected';
-        account.lastError = 'Cerrado por usuario';
-        
-        // Emitir estado actualizado
-        this.io.emit('status', {
-          sessionName: account.sessionName,
-          phoneNumber: account.phoneNumber,
-          status: 'disconnected',
-          detail: 'Cerrado por usuario',
-          progress: 0,
-          active: true
-        });
-        
-        // Eliminar carpeta de sesión
-        const sessionDir = `${config.paths.sessions}/${sessionName}`;
-        if (fs.existsSync(sessionDir)) {
-          fs.rm(sessionDir, { recursive: true }, (err) => {
-            if (err) {
-              utils.log(`Error al eliminar directorio de sesión: ${err.message}`, 'error');
-            } else {
-              utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
-            }
-          });
+      // Intentar cerrar sesión con manejo de errores mejorado
+      try {
+        if (account.client) {
+          await account.client.logout();
+          utils.log(`Sesión cerrada para ${account.phoneNumber}`, 'success');
         }
-        
-        return true;
-      } else {
-        throw new Error('Cliente no inicializado');
+      } catch (logoutError) {
+        utils.log(`Error al cerrar sesión: ${logoutError.message}. Intentando limpieza manual.`, 'warning');
+        // Continuar con la limpieza manual incluso si hay error en logout()
       }
+
+      // Actualizar estado de la cuenta
+      account.status = 'disconnected';
+      account.lastError = 'Cerrado por usuario';
+      
+      // Emitir estado actualizado
+      this.io.emit('status', {
+        sessionName: account.sessionName,
+        phoneNumber: account.phoneNumber,
+        status: 'disconnected',
+        detail: 'Cerrado por usuario',
+        progress: 0,
+        active: true
+      });
+      
+      // Eliminar carpeta de sesión siempre
+      const sessionDir = `${config.paths.sessions}/${sessionName}`;
+      if (fs.existsSync(sessionDir)) {
+        try {
+          fs.rmSync(sessionDir, { recursive: true, force: true });
+          utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
+        } catch (rmError) {
+          utils.log(`Error al eliminar directorio de sesión: ${rmError.message}`, 'error');
+        }
+      }
+      
+      return true;
     } catch (error) {
       utils.log(`Error en logoutAccount: ${error.message}`, 'error');
       throw error;
@@ -747,6 +845,7 @@ class WhatsAppManager {
       utils.log(`Regenerando QR para la cuenta ${account.phoneNumber}`, 'info');
       
       // Emitir estado de inicio de regeneración
+      this.io.emit('qrRefreshStarted', { sessionName });
       this.io.emit('status', {
         sessionName: account.sessionName,
         phoneNumber: account.phoneNumber,
@@ -756,76 +855,178 @@ class WhatsAppManager {
         active: true
       });
       
-      // Primero, cerrar sesión si existe
-      if (account.client) {
-        try {
-          await account.client.logout();
-          utils.log(`Sesión cerrada para regenerar QR: ${account.phoneNumber}`, 'success');
-
-          } catch (logoutError) {
-          utils.log(`Error al cerrar sesión: ${logoutError.message}. Continuando con eliminación manual.`, 'warning');
-        }
+      // Limpiar sesión anterior siempre para evitar problemas
+      this.cleanSession(sessionName);
+      
+      // Emitir estado actualizado
+      this.io.emit('status', {
+        sessionName: account.sessionName,
+        phoneNumber: account.phoneNumber,
+        status: 'initializing',
+        detail: 'Preparando nuevo código QR...',
+        progress: 40,
+        active: true
+      });
+      
+      // Esperar un segundo para evitar condiciones de carrera
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Crear un nuevo cliente para evitar problemas con el anterior
+      const newClient = new Client({
+        authStrategy: new LocalAuth({
+          clientId: sessionName,
+          dataPath: path.join(config.paths.sessions, sessionName)
+        }),
+        puppeteer: {
+          headless: true,
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+          args: config.whatsapp.puppeteerArgs,
+          defaultViewport: null,
+          timeout: 60000
+        },
+        restartOnAuthFail: true,
+        takeoverOnConflict: true,
+        authTimeoutMs: 120000,
+        qrMaxRetries: 5
+      });
+      
+      // Transferir los event listeners importantes
+      newClient.on('qr', (qr) => {
+        utils.log(`Nuevo QR generado para ${account.phoneNumber}`, 'success');
+        this.isGeneratingQR = true;
         
-        // Eliminar carpeta de sesión
-        const sessionDir = `${config.paths.sessions}/${sessionName}`;
-        if (fs.existsSync(sessionDir)) {
-          try {
-            fs.rm(sessionDir, { recursive: true }, (err) => {
-              if (err) {
-                utils.log(`Error al eliminar directorio de sesión: ${err.message}`, 'error');
-              } else {
-                utils.log(`Directorio de sesión eliminado: ${sessionDir}`, 'success');
-              }
-            });
-          } catch (error) {
-            utils.log(`Error al eliminar directorio de sesión: ${error.message}`, 'error');
-          }
-        }
-        
-        // Reinicializar cliente
-        account.status = 'initializing';
-        account.lastError = null;
-        this.isGeneratingQR = false;
-        
-        // Emitir estado actualizado
+        // Emitir estado de espera de escaneo
         this.io.emit('status', {
-          sessionName: account.sessionName,
+          sessionName,
           phoneNumber: account.phoneNumber,
-          status: 'initializing',
-          detail: 'Preparando nuevo código QR...',
-          progress: 40,
+          status: 'waiting',
+          detail: 'Esperando escaneo del código QR...',
+          progress: 70,
           active: true
         });
         
-        // Esperar un segundo y reiniciar
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Reinicializar cliente
-        try {
-          await account.client.initialize();
-          return true;
-        } catch (initError) {
-          utils.log(`Error al reinicializar cliente: ${initError.message}`, 'error');
-          account.lastError = initError.message;
-          account.status = 'error';
-          
-          // Emitir estado de error
-          this.io.emit('status', {
-            sessionName: account.sessionName,
+        qrcode.toDataURL(qr, (err, url) => {
+          if (err) {
+            utils.log(`Error al generar QR: ${err.message}`, 'error');
+            return;
+          }
+          // Emitir QR al panel
+          this.io.emit('qr', {
+            sessionName,
             phoneNumber: account.phoneNumber,
-            status: 'error',
-            detail: `Error: ${initError.message}`,
-            progress: 0,
-            active: true
+            qrDataUrl: url
           });
-          
-          throw initError;
+        });
+      });
+      
+      newClient.on('ready', () => {
+        utils.log(`Cliente regenerado ${account.phoneNumber} está listo!`, 'success');
+        this.isGeneratingQR = false;
+        
+        // Actualizar estado de la cuenta
+        account.status = 'ready';
+        account.lastError = null;
+        account.client = newClient;
+        
+        // Actualizar estado con progreso completo
+        this.io.emit('status', {
+          sessionName,
+          phoneNumber: account.phoneNumber,
+          status: 'ready',
+          detail: '¡Conectado exitosamente!',
+          progress: 100,
+          active: true
+        });
+      });
+      
+      newClient.on('auth_failure', (msg) => {
+        utils.log(`Error de autenticación al regenerar para ${account.phoneNumber}: ${msg}`, 'error');
+        
+        // Actualizar estado de la cuenta
+        account.status = 'error';
+        account.lastError = msg;
+        
+        // Emitir estado de error
+        this.io.emit('status', {
+          sessionName,
+          phoneNumber: account.phoneNumber,
+          status: 'error',
+          detail: `Error de autenticación: ${msg}`,
+          progress: 0,
+          active: true
+        });
+        
+        // Emitir error específico de regeneración
+        this.io.emit('qrRefreshError', {
+          sessionName,
+          error: msg
+        });
+      });
+      
+      // Otros eventos importantes
+      newClient.on('message', async (message) => {
+        if (this.isAdminMessage(message)) {
+          this.handleAdminCommand(message, newClient);
+          return;
         }
-      } else {
-        throw new Error('Cliente no inicializado');
+        await this.handleIncomingMessage(message, newClient);
+      });
+      
+      newClient.on('disconnected', (reason) => {
+        utils.log(`Cliente regenerado ${account.phoneNumber} desconectado: ${reason}`, 'warning');
+        this.isGeneratingQR = false;
+        account.status = 'disconnected';
+        account.lastError = reason;
+        
+        this.io.emit('status', {
+          sessionName,
+          phoneNumber: account.phoneNumber,
+          status: 'disconnected',
+          detail: `Desconectado: ${reason}`,
+          progress: 0,
+          active: true
+        });
+      });
+      
+      // Inicializar el nuevo cliente
+      try {
+        await newClient.initialize();
+        // Reemplazar el cliente anterior con el nuevo
+        account.client = newClient;
+        return true;
+      } catch (initError) {
+        utils.log(`Error al inicializar cliente regenerado: ${initError.message}`, 'error');
+        
+        // Emitir error específico de regeneración
+        this.io.emit('qrRefreshError', {
+          sessionName,
+          error: initError.message
+        });
+        
+        account.lastError = initError.message;
+        account.status = 'error';
+        
+        // Emitir estado de error
+        this.io.emit('status', {
+          sessionName,
+          phoneNumber: account.phoneNumber,
+          status: 'error',
+          detail: `Error: ${initError.message}`,
+          progress: 0,
+          active: true
+        });
+        
+        throw initError;
       }
     } catch (error) {
       utils.log(`Error en regenerateQR: ${error.message}`, 'error');
+      
+      // Emitir error específico de regeneración
+      this.io.emit('qrRefreshError', {
+        sessionName,
+        error: error.message
+      });
+      
       throw error;
     }
   }
@@ -1231,6 +1432,20 @@ class WhatsAppManager {
         progress: 25,
         active: true
       });
+      
+      // Si hay error de RegistrationUtils, limpiar sesión y regenerar QR
+      if (account.lastError && account.lastError.includes('RegistrationUtils')) {
+        utils.log('Detectado error de RegistrationUtils, regenerando sesión...', 'warning');
+        this.cleanSession(account.sessionName);
+        
+        // Intentar regenerar QR
+        setTimeout(() => {
+          this.regenerateQR(account.sessionName).catch(err => {
+            utils.log(`Error al regenerar QR durante reconexión: ${err.message}`, 'error');
+          });
+        }, 3000);
+        return;
+      }
       
       try {
         account.client.initialize().catch(err => {
