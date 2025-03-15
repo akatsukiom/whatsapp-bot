@@ -1,4 +1,4 @@
-// templates/admin-template.js
+// templates/admin-template.js - Corregido
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
@@ -250,17 +250,15 @@ function createAdminHtml() {
     // Función para mostrar notificaciones (toast)
     function showToast(message, type = 'success') {
       const toastId = 'toast-' + Date.now();
-      const toastHtml = \`
-        <div id="\${"$"}{toastId}" class="toast align-items-center text-white bg-\${"$"}{type === 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
-          <div class="d-flex">
-            <div class="toast-body">
-              <i class="bi bi-\${"$"}{type === 'success' ? 'check-circle' : 'exclamation-circle'}-fill me-2"></i>
-              \${"$"}{message}
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-          </div>
-        </div>
-      \`;
+      const toastHtml = '<div id="' + toastId + '" class="toast align-items-center text-white bg-' + (type === 'success' ? 'success' : 'danger') + '" role="alert" aria-live="assertive" aria-atomic="true">' +
+                         '<div class="d-flex">' +
+                         '<div class="toast-body">' +
+                         '<i class="bi bi-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + '-fill me-2"></i>' +
+                         message +
+                         '</div>' +
+                         '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
+                         '</div>' +
+                         '</div>';
       toastContainer.insertAdjacentHTML('beforeend', toastHtml);
       const toastElement = document.getElementById(toastId);
       const toast = new bootstrap.Toast(toastElement, {
@@ -316,21 +314,32 @@ function createAdminHtml() {
       for (const [trigger, response] of Object.entries(responses)) {
         const row = document.createElement('tr');
         
-        row.innerHTML = \`
-          <td>\${"$"}{trigger}</td>
-          <td>\${"$"}{response}</td>
-          <td>
-            <button class="btn btn-sm btn-warning edit-btn" data-trigger="\${"$"}{trigger}">
-              <i class="bi bi-pencil-fill"></i> Editar
-            </button>
-            <button class="btn btn-sm btn-danger delete-btn" data-trigger="\${"$"}{trigger}">
-              <i class="bi bi-trash-fill"></i> Eliminar
-            </button>
-            <button class="btn btn-sm btn-info quick-btn" data-trigger="\${"$"}{trigger}">
-              <i class="bi bi-lightning-charge-fill"></i> Respuesta Rápida
-            </button>
-          </td>
-        \`;
+        // Escape HTML para evitar inyección y formateo
+        const escapeHTML = (str) => {
+          return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        };
+        
+        const escapedTrigger = escapeHTML(trigger);
+        const escapedResponse = escapeHTML(response);
+        
+        row.innerHTML = '<td>' + escapedTrigger + '</td>' +
+                        '<td>' + escapedResponse + '</td>' +
+                        '<td>' +
+                        '  <button class="btn btn-sm btn-warning edit-btn" data-trigger="' + escapedTrigger + '">' +
+                        '    <i class="bi bi-pencil-fill"></i> Editar' +
+                        '  </button>' +
+                        '  <button class="btn btn-sm btn-danger delete-btn" data-trigger="' + escapedTrigger + '">' +
+                        '    <i class="bi bi-trash-fill"></i> Eliminar' +
+                        '  </button>' +
+                        '  <button class="btn btn-sm btn-info quick-btn" data-trigger="' + escapedTrigger + '">' +
+                        '    <i class="bi bi-lightning-charge-fill"></i> Respuesta Rápida' +
+                        '  </button>' +
+                        '</td>';
         
         responsesTable.appendChild(row);
       }
@@ -401,7 +410,7 @@ function createAdminHtml() {
     
     socket.on('responsesImported', (data) => {
       toggleLoading(false);
-      showToast(\`\${"$"}{data.count} respuestas importadas correctamente\`, 'success');
+      showToast(data.count + ' respuestas importadas correctamente', 'success');
       socket.emit('getResponses');
     });
     
@@ -422,7 +431,7 @@ function createAdminHtml() {
     // Escuchar eventos para Mensajería en tiempo real
     socket.on('botChatMessage', (data) => {
       const entry = document.createElement('div');
-      entry.innerHTML = \`<strong>\${"$"}{data.from}:</strong> \${"$"}{data.message}\`;
+      entry.innerHTML = '<strong>' + data.from + ':</strong> ' + data.message;
       botChatDiv.appendChild(entry);
       botChatDiv.scrollTop = botChatDiv.scrollHeight;
     });
@@ -434,7 +443,7 @@ function createAdminHtml() {
         socket.emit('adminChatMessage', message);
         // También agregar el mensaje a la interfaz
         const entry = document.createElement('div');
-        entry.innerHTML = \`<strong>Tú:</strong> \${"$"}{message}\`;
+        entry.innerHTML = '<strong>Tú:</strong> ' + message;
         botChatDiv.appendChild(entry);
         botChatDiv.scrollTop = botChatDiv.scrollHeight;
         // Limpiar campo de entrada
@@ -463,7 +472,7 @@ function createAdminHtml() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = \`respuestas_whatsapp_\${"$"}{new Date().toISOString().slice(0,10)}.json\`;
+        a.download = 'respuestas_whatsapp_' + new Date().toISOString().slice(0,10) + '.json';
         document.body.appendChild(a);
         a.click();
         
