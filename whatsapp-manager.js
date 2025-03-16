@@ -306,6 +306,7 @@ class WhatsAppManager {
     }
   }
 
+
   // Agregar una nueva cuenta (solo una)
   addAccount(phoneNumber, sessionName) {
     const sessionFolder = path.join(config.paths.sessions, sessionName);
@@ -1136,6 +1137,15 @@ class WhatsAppManager {
 
     const isGroup = message.from.endsWith('@g.us');
     utils.log(`Es mensaje de grupo: ${isGroup}`, 'info');
+
+    // Verificar si el mensaje es de un administrador en un grupo
+    // Si es así, ignorarlo completamente
+    if (isGroup && 
+        ((message.author && config.whatsapp.adminNumbers.includes(message.author)) ||
+         config.whatsapp.adminNumbers.includes(message.from))) {
+      utils.log('Mensaje de administrador en grupo ignorado', 'info');
+      return; // Salir de la función sin procesar el mensaje
+    }
 
     if (message.hasMedia) {
       await this.handleMediaMessage(message, client);
