@@ -37,9 +37,11 @@ module.exports = {
     ],
 
     // Números de administradores (pueden controlar el bot con comandos tipo !learn, !responder, etc.)
-    adminNumbers: ['5214961436947@c.us'], // Reemplaza con tu número real
-   adminNumbers: ['5214961260597@c.us'], // Reemplaza con tu número real
-      adminNumbers: ['5214495433930@c.us'], // Reemplaza con tu número real
+   adminNumbers: [
+  '521496143694@c.us', 
+  '521496126097@c.us', 
+  '521494543930@c.us'
+], // Reemplaza con tus números reales
         
 
     // Mensaje de redirección para chats privados
