@@ -37,14 +37,17 @@ module.exports = {
     ],
 
     // Números de administradores (pueden controlar el bot con comandos tipo !learn, !responder, etc.)
-    adminNumbers: ['521234567890@c.us'], // Reemplaza con tu número real
+    adminNumbers: ['5214961436947@c.us'], // Reemplaza con tu número real
+   adminNumbers: ['5214961260597@c.us'], // Reemplaza con tu número real
+      adminNumbers: ['5214495433930@c.us'], // Reemplaza con tu número real
+        
 
     // Mensaje de redirección para chats privados
     redirectMessage: "Este es un bot automático. Por favor, envía tus mensajes al número 4961260597 para recibir atención personalizada. Gracias.",
 
     // Cuenta principal (única)
     mainAccount: {
-      phoneNumber: '5212345678901', 
+      phoneNumber: '5214962541655', 
       sessionName: 'cuenta_principal'
     },
 
