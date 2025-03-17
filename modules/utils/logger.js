@@ -1,16 +1,12 @@
 /**
- * Utilidad para el registro de logs
+ * Logger simplificado para evitar problemas de configuración
  */
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
-const config = require('../config');
 
-// Crear directorio de logs si no existe
-const logDir = config.logging && config.logging.file 
-  ? path.dirname(config.logging.file) 
-  : path.join(process.cwd(), 'logs');
-
+// Crear directorio de logs en una ubicación fija
+const logDir = path.join(process.cwd(), 'logs');
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
@@ -28,24 +24,18 @@ const logFormat = winston.format.combine(
   })
 );
 
-// Crear logger
+// Crear logger con configuración básica
 const logger = winston.createLogger({
-  level: config.logging && config.logging.level ? config.logging.level : 'info',
+  level: 'info',
   format: logFormat,
   transports: [
     // Log a archivo
     new winston.transports.File({ 
-      filename: config.logging && config.logging.file 
-        ? config.logging.file 
-        : path.join(logDir, 'app.log'),
-      maxsize: config.logging && config.logging.maxSize 
-        ? config.logging.maxSize 
-        : '10m',
-      maxFiles: config.logging && config.logging.maxFiles 
-        ? config.logging.maxFiles 
-        : 5
+      filename: path.join(logDir, 'app.log'),
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 5
     }),
-    // Log a consola en modo desarrollo
+    // Log a consola siempre
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
@@ -55,5 +45,11 @@ const logger = winston.createLogger({
   ],
   exitOnError: false
 });
+
+// Agregar métodos de conveniencia
+logger.debug = logger.debug.bind(logger);
+logger.info = logger.info.bind(logger);
+logger.warn = logger.warn.bind(logger);
+logger.error = logger.error.bind(logger);
 
 module.exports = logger;
