@@ -1,4 +1,11 @@
 // Punto de entrada principal para el WhatsApp Bot Manager
+const dotenv = require('dotenv');
+
+// Cargar variables de entorno primero, antes de cualquier otra importación
+dotenv.config();
+console.log('Variables de entorno cargadas');
+console.log('API Key de OpenAI configurada:', process.env.OPENAI_API_KEY ? 'Sí (disponible)' : 'No (no disponible)');
+
 const config = require('./config');
 const setupServer = require('./server');
 const WhatsAppManager = require('./whatsapp-manager');

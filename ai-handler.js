@@ -5,28 +5,31 @@ const utils = require('./utils');
 
 class AIHandler {
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY || config.openai.apiKey
-    });
+    // Intentar cargar la API key con una mejor verificación
+    this.apiKey = process.env.OPENAI_API_KEY || config.openai.apiKey;
     
-    // Validar si hay una API key configurada
-    if (!process.env.OPENAI_API_KEY && !config.openai.apiKey) {
-      utils.log('No se ha configurado API key de OpenAI. Las respuestas generadas por IA no estarán disponibles.', 'warning');
-    } else {
+    // Solo inicializar OpenAI si hay una API key
+    if (this.apiKey && this.apiKey.trim() !== '') {
+      this.openai = new OpenAI({
+        apiKey: this.apiKey
+      });
+      
       utils.log(`API key de OpenAI configurada correctamente: ${process.env.OPENAI_API_KEY ? "Desde variables de entorno" : "Desde config"}`, 'success');
       utils.log(`Modelo configurado: ${config.openai.model}`, 'info');
+    } else {
+      utils.log('No se ha configurado API key de OpenAI. Las respuestas generadas por IA no estarán disponibles.', 'warning');
+      this.openai = null;
     }
   }
 
   async generateResponse(message) {
     try {
       // Verificar si hay API key configurada
-      if (!process.env.OPENAI_API_KEY && !config.openai.apiKey) {
+      if (!this.openai || !this.apiKey || this.apiKey.trim() === '') {
         return `Lo siento, no puedo procesar tu consulta porque no se ha configurado la integración con OpenAI. ${config.openai.privateMessage}`;
       }
 
       // Log detallado para debug
-      utils.log(`Intentando usar API key: ${this.openai.apiKey ? "Configurada" : "No configurada"}`, 'info');
       utils.log(`Generando respuesta con OpenAI para: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`, 'info');
       
       try {
