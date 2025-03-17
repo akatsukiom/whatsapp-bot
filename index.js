@@ -3,6 +3,8 @@ const dotenv = require('dotenv');
 const fs = require('fs');
 const path = require('path');
 const utils = require('./modules/utils/logger');
+const logger = require('./modules/utils/logger');
+
 const setupServer = require('./server');
 const config = require('./config');
 
