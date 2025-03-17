@@ -306,7 +306,6 @@ class WhatsAppManager {
     }
   }
 
-
   // Agregar una nueva cuenta (solo una)
   addAccount(phoneNumber, sessionName) {
     const sessionFolder = path.join(config.paths.sessions, sessionName);
@@ -754,8 +753,7 @@ class WhatsAppManager {
       return false;
     }
   }
-
-  // Cerrar sesión
+// Cerrar sesión (continuación)
   async logoutAccount(sessionName) {
     try {
       const accountIndex = this.accounts.findIndex(acc => acc.sessionName === sessionName);
@@ -1125,10 +1123,19 @@ class WhatsAppManager {
 
   // Manejar mensajes entrantes
   async handleIncomingMessage(message, client) {
-     utils.log(`Mensaje recibido: "${message.body}" de ${message.from} - autor: ${message.author || 'desconocido'}`, 'info');
-  utils.log(`Administradores configurados: ${JSON.stringify(config.whatsapp.adminNumbers)}`, 'info');
-  utils.log(`Es admin: ${config.whatsapp.adminNumbers.includes(message.from) || (message.author && config.whatsapp.adminNumbers.includes(message.author))}`, 'info');
-  utils.log(`Es grupo: ${message.from.endsWith('@g.us')}`, 'info');
+    utils.log(`Mensaje recibido: "${message.body}" de ${message.from} - autor: ${message.author || 'desconocido'}`, 'info');
+    utils.log(`Administradores configurados: ${JSON.stringify(config.whatsapp.adminNumbers)}`, 'info');
+    utils.log(`Es admin: ${config.whatsapp.adminNumbers.includes(message.from) || (message.author && config.whatsapp.adminNumbers.includes(message.author))}`, 'info');
+    utils.log(`Es grupo: ${message.from.endsWith('@g.us')}`, 'info');
+
+    // Primero verificar si el mensaje es de un administrador (tanto en privado como en grupo)
+    const isFromAdmin = config.whatsapp.adminNumbers.includes(message.from) || 
+                       (message.author && config.whatsapp.adminNumbers.includes(message.author));
+    
+    if (isFromAdmin) {
+      utils.log(`Mensaje de administrador ignorado: ${message.from || message.author}`, 'info');
+      return; // Salir de la función sin procesar el mensaje
+    }
 
     // Emitir al panel
     if (this.io) {
@@ -1141,16 +1148,9 @@ class WhatsAppManager {
     const isGroup = message.from.endsWith('@g.us');
     utils.log(`Es mensaje de grupo: ${isGroup}`, 'info');
 
-    // Verificar si el mensaje es de un administrador en un grupo
-    // Si es así, ignorarlo completamente
-    if (isGroup && 
-        ((message.author && config.whatsapp.adminNumbers.includes(message.author)) ||
-         config.whatsapp.adminNumbers.includes(message.from))) {
-      utils.log('Mensaje de administrador en grupo ignorado', 'info');
-      return; // Salir de la función sin procesar el mensaje
-    }
-
+    // Si es mensaje con multimedia
     if (message.hasMedia) {
+      utils.log('Mensaje con multimedia detectado', 'info');
       await this.handleMediaMessage(message, client);
       return;
     }
@@ -1260,7 +1260,17 @@ class WhatsAppManager {
 
   // Manejar mensajes multimedia
   async handleMediaMessage(message, client) {
+    // Verificar primero si es un mensaje de administrador
+    const isFromAdmin = config.whatsapp.adminNumbers.includes(message.from) || 
+                        (message.author && config.whatsapp.adminNumbers.includes(message.author));
+    
+    if (isFromAdmin) {
+      utils.log(`Mensaje multimedia de administrador ignorado: ${message.from || message.author}`, 'info');
+      return; // Salir de la función sin procesar el mensaje
+    }
+    
     try {
+      utils.log(`Procesando mensaje multimedia de ${message.from}`, 'info');
       await client.sendMessage(
         message.from,
         'Estimado/a, agradezco su interés en obtener más información. Por favor, siéntase en la libertad de comunicarse con nosotros al número 4961260597...'
