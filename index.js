@@ -66,6 +66,76 @@ async function main() {
   // Crear una copia de seguridad antes de iniciar (si existe el archivo)
   utils.backupLearningData();
   
+  // Verificar respaldo reciente y restaurarlo si es necesario
+  function checkAndRestoreBackup() {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const backupDir = config.paths.backups;
+      const learningDataPath = config.paths.learningData;
+      
+      if (!fs.existsSync(backupDir)) {
+        utils.log('No hay directorio de respaldos disponible', 'warning');
+        return false;
+      }
+      
+      // Buscar el archivo de respaldo más reciente
+      const files = fs.readdirSync(backupDir)
+        .filter(file => file.startsWith('learning-data-backup-'))
+        .sort()
+        .reverse();
+      
+      if (files.length === 0) {
+        utils.log('No se encontraron archivos de respaldo', 'warning');
+        return false;
+      }
+      
+      // Verificar si el archivo de datos actual existe y tiene contenido
+      if (fs.existsSync(learningDataPath)) {
+        const currentData = fs.readFileSync(learningDataPath, 'utf8');
+        if (currentData && currentData.length > 50 && currentData.includes('"responses"')) {
+          try {
+            const jsonData = JSON.parse(currentData);
+            if (jsonData && jsonData.responses && Object.keys(jsonData.responses).length > Object.keys(config.initialLearningData.responses).length) {
+              utils.log('El archivo de datos actual tiene más respuestas que las predeterminadas, no es necesario restaurar', 'info');
+              return false;
+            }
+          } catch (parseError) {
+            utils.log(`Error al analizar JSON actual: ${parseError.message}`, 'error');
+            // Si hay error de análisis, seguimos para restaurar el respaldo
+          }
+        }
+      }
+      
+      // Restaurar desde el respaldo más reciente
+      const latestBackup = path.join(backupDir, files[0]);
+      utils.log(`Restaurando datos desde el respaldo: ${latestBackup}`, 'warning');
+      
+      const backupData = fs.readFileSync(latestBackup, 'utf8');
+      
+      try {
+        // Verificar que el respaldo sea un JSON válido
+        const backupJson = JSON.parse(backupData);
+        if (backupJson && backupJson.responses && Object.keys(backupJson.responses).length > 0) {
+          fs.writeFileSync(learningDataPath, backupData);
+          utils.log(`Datos restaurados correctamente desde respaldo. ${Object.keys(backupJson.responses).length} respuestas recuperadas.`, 'success');
+          return true;
+        } else {
+          utils.log('El respaldo no contiene respuestas válidas', 'warning');
+          return false;
+        }
+      } catch (backupJsonError) {
+        utils.log(`El archivo de respaldo no contiene un JSON válido: ${backupJsonError.message}`, 'error');
+        return false;
+      }
+    } catch (error) {
+      utils.log(`Error al verificar/restaurar respaldo: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
+  checkAndRestoreBackup();
+  
   // Configurar servidor
   utils.log('Configurando servidor web...', 'info');
   const { io } = setupServer();
@@ -102,6 +172,12 @@ async function main() {
   utils.log('Bot de WhatsApp iniciado', 'success');
   utils.log(`Visita la página web (http://localhost:${config.server.port}) para escanear el código QR`, 'info');
   utils.log(`Para administrar respuestas, visita http://localhost:${config.server.port}/admin`, 'info');
+  
+  // Configurar respaldo automático periódico
+  setInterval(() => {
+    utils.log('Realizando respaldo programado de datos de aprendizaje...', 'info');
+    utils.backupLearningData();
+  }, 1800000); // Cada 30 minutos (1800000 ms)
   
   // Configurar manejo de errores no capturados
   process.on('uncaughtException', (error) => {
