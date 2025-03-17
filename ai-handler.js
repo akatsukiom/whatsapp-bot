@@ -24,9 +24,10 @@ class AIHandler {
 
   async generateResponse(message) {
     try {
-      // Verificar si hay API key configurada
+      // Verificar si hay API key configurada - SIMPLIFICADO
       if (!this.openai || !this.apiKey || this.apiKey.trim() === '') {
-        return `Lo siento, no puedo procesar tu consulta porque no se ha configurado la integración con OpenAI. ${config.openai.privateMessage}`;
+        // Mensaje simplificado que solo redirecciona al privado sin mencionar errores técnicos
+        return config.openai.privateMessage;
       }
 
       // Log detallado para debug
@@ -77,11 +78,13 @@ class AIHandler {
         if (apiError.message && apiError.message.includes('API key')) {
           utils.log('Problema con la API key. Verifica que sea válida y esté activa.', 'error');
         }
-        return `Lo siento, no pude procesar tu consulta. ${config.openai.privateMessage}`;
+        // Simplificado para solo devolver el mensaje de redirección en caso de error
+        return config.openai.privateMessage;
       }
     } catch (error) {
       utils.log(`Error al generar respuesta con OpenAI: ${error.message}`, 'error');
-      return `Lo siento, no pude procesar tu consulta. ${config.openai.privateMessage}`;
+      // Simplificado para solo devolver el mensaje de redirección en caso de error
+      return config.openai.privateMessage;
     }
   }
 }

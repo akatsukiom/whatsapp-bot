@@ -670,7 +670,8 @@ class WhatsAppManager {
       }, retryDelay);
     });
 
-    // Actualizar progreso antes de inicializar
+
+// Actualizar progreso antes de inicializar
     this.io.emit('status', {
       sessionName,
       phoneNumber,
@@ -753,7 +754,8 @@ class WhatsAppManager {
       return false;
     }
   }
-// Cerrar sesión (continuación)
+  
+  // Cerrar sesión (continuación)
   async logoutAccount(sessionName) {
     try {
       const accountIndex = this.accounts.findIndex(acc => acc.sessionName === sessionName);
@@ -1121,20 +1123,23 @@ class WhatsAppManager {
     }
   }
 
-  // Manejar mensajes entrantes
+  // Manejar mensajes entrantes - MODIFICADO
   async handleIncomingMessage(message, client) {
-    utils.log(`Mensaje recibido: "${message.body}" de ${message.from} - autor: ${message.author || 'desconocido'}`, 'info');
-    utils.log(`Administradores configurados: ${JSON.stringify(config.whatsapp.adminNumbers)}`, 'info');
-    utils.log(`Es admin: ${config.whatsapp.adminNumbers.includes(message.from) || (message.author && config.whatsapp.adminNumbers.includes(message.author))}`, 'info');
-    utils.log(`Es grupo: ${message.from.endsWith('@g.us')}`, 'info');
+    utils.log(`Mensaje recibido: "${message.body}" de ${message.from}`, 'info');
 
-    // Primero verificar si el mensaje es de un administrador (tanto en privado como en grupo)
-    const isFromAdmin = config.whatsapp.adminNumbers.includes(message.from) || 
-                       (message.author && config.whatsapp.adminNumbers.includes(message.author));
+    // MEJORA 1: Verificación más clara de si es un chat privado o de grupo
+    const isGroup = message.from.endsWith('@g.us');
+    const isPrivateChat = message.from.endsWith('@c.us');
+    utils.log(`Tipo de chat: ${isGroup ? 'Grupo' : isPrivateChat ? 'Privado' : 'Desconocido'}`, 'info');
+
+    // MEJORA 2: Verificación más robusta de si es un administrador
+    const isFromAdmin = config.whatsapp.adminNumbers.some(adminNumber => {
+      return message.from === adminNumber || (message.author && message.author === adminNumber);
+    });
     
     if (isFromAdmin) {
       utils.log(`Mensaje de administrador ignorado: ${message.from || message.author}`, 'info');
-      return; // Salir de la función sin procesar el mensaje
+      return;
     }
 
     // Emitir al panel
@@ -1145,9 +1150,6 @@ class WhatsAppManager {
       });
     }
 
-    const isGroup = message.from.endsWith('@g.us');
-    utils.log(`Es mensaje de grupo: ${isGroup}`, 'info');
-
     // Si es mensaje con multimedia
     if (message.hasMedia) {
       utils.log('Mensaje con multimedia detectado', 'info');
@@ -1155,106 +1157,169 @@ class WhatsAppManager {
       return;
     }
 
-    // Si es chat privado, no se responde
-    if (!isGroup) {
-      utils.log('Mensaje privado ignorado', 'info');
-      return;
-    }
-
-    // Procesar mensaje de grupo
-    utils.log('Procesando mensaje de grupo...', 'info');
-
-    if (!this.learningDatabase || !this.learningDatabase.responses) {
-      utils.log('Base de datos de respuestas no inicializada o vacía. Recargando...', 'warning');
-      this.loadLearningData();
-      if (!this.learningDatabase || !this.learningDatabase.responses) {
-        utils.log('No se pudieron cargar respuestas. Usando respuestas por defecto', 'warning');
-        this.learningDatabase = JSON.parse(JSON.stringify(config.initialLearningData));
-      }
-    }
-
-    const messageText = message.body.toLowerCase().trim();
-    utils.log(`Buscando respuesta para: "${messageText}"`, 'info');
-
-    let response = null;
-    let matchType = '';
-
-    if (this.learningDatabase.responses[messageText]) {
-      utils.log(`Coincidencia exacta encontrada para: "${messageText}"`, 'success');
-      response = this.learningDatabase.responses[messageText];
-      matchType = 'exacta';
-    } else {
-      let foundPartialMatch = false;
-      for (const key in this.learningDatabase.responses) {
-        if (messageText.includes(key)) {
-          utils.log(`Coincidencia parcial encontrada: "${messageText}" incluye "${key}"`, 'success');
-          response = this.learningDatabase.responses[key];
-          matchType = 'parcial';
-          foundPartialMatch = true;
-          break;
-        }
-      }
-      if (!foundPartialMatch) {
-        utils.log('Buscando coincidencia por similitud...', 'info');
-        const mostSimilarKey = this.findMostSimilarKey(messageText);
-        if (mostSimilarKey) {
-          utils.log(`Coincidencia similar encontrada: "${messageText}" -> "${mostSimilarKey}"`, 'success');
-          response = this.learningDatabase.responses[mostSimilarKey];
-          matchType = 'similar';
-        }
-      }
-    }
-
-    if (response) {
-      utils.log(`Enviando respuesta (coincidencia ${matchType}): "${response.substring(0, 50)}${response.length > 50 ? '...' : ''}"`, 'info');
+    // MEJORA 3: Responder en chats privados directamente con el mensaje de redirección
+    if (isPrivateChat) {
+      utils.log('Mensaje privado recibido - enviando redirección', 'info');
+      const redirectMessage = config.whatsapp.redirectMessage || config.openai.privateMessage;
       try {
-        const clientToUse = this.activeAccount ? this.activeAccount.client : client;
-        await clientToUse.sendMessage(message.from, response);
-        utils.log('Respuesta enviada exitosamente', 'success');
-
+        await client.sendMessage(message.from, redirectMessage);
+        utils.log('Mensaje de redirección enviado a chat privado', 'success');
         if (this.io) {
           this.io.emit('botChatMessage', {
             from: 'BOT',
-            message: response
+            message: `[PRIVADO: ${message.from}] ${redirectMessage}`
           });
         }
       } catch (error) {
-        utils.log(`Error al enviar respuesta: ${error.message}`, 'error');
-        if (client !== this.activeAccount?.client) {
-          try {
-            utils.log('Intentando enviar con el cliente original...', 'info');
-            await client.sendMessage(message.from, response);
-            utils.log('Respuesta enviada con cliente original', 'success');
-          } catch (secondError) {
-            utils.log(`Error al enviar con cliente original: ${secondError.message}`, 'error');
+        utils.log(`Error al enviar redirección a chat privado: ${error.message}`, 'error');
+      }
+      return;
+    }
+
+    // Si no es grupo ni privado, registramos y salimos
+    if (!isGroup && !isPrivateChat) {
+      utils.log(`Tipo de chat desconocido ignorado: ${message.from}`, 'warning');
+      return;
+    }
+
+    // Procesamos los mensajes de grupo
+    if (isGroup) {
+      utils.log('Procesando mensaje de grupo...', 'info');
+
+      if (!this.learningDatabase || !this.learningDatabase.responses) {
+        utils.log('Base de datos de respuestas no inicializada o vacía. Recargando...', 'warning');
+        this.loadLearningData();
+        if (!this.learningDatabase || !this.learningDatabase.responses) {
+          utils.log('No se pudieron cargar respuestas. Usando respuestas por defecto', 'warning');
+          this.learningDatabase = JSON.parse(JSON.stringify(config.initialLearningData));
+        }
+      }
+
+      const messageText = message.body.toLowerCase().trim();
+      utils.log(`Buscando respuesta para: "${messageText}"`, 'info');
+
+      let response = null;
+      let matchType = '';
+
+      if (this.learningDatabase.responses[messageText]) {
+        utils.log(`Coincidencia exacta encontrada para: "${messageText}"`, 'success');
+        response = this.learningDatabase.responses[messageText];
+        matchType = 'exacta';
+      } else {
+        let foundPartialMatch = false;
+        for (const key in this.learningDatabase.responses) {
+          if (messageText.includes(key)) {
+            utils.log(`Coincidencia parcial encontrada: "${messageText}" incluye "${key}"`, 'success');
+            response = this.learningDatabase.responses[key];
+            matchType = 'parcial';
+            foundPartialMatch = true;
+            break;
+          }
+        }
+        if (!foundPartialMatch) {
+          utils.log('Buscando coincidencia por similitud...', 'info');
+          const mostSimilarKey = this.findMostSimilarKey(messageText);
+          if (mostSimilarKey) {
+            utils.log(`Coincidencia similar encontrada: "${messageText}" -> "${mostSimilarKey}"`, 'success');
+            response = this.learningDatabase.responses[mostSimilarKey];
+            matchType = 'similar';
+          }
+        }
+      }
+
+      if (response) {
+        utils.log(`Enviando respuesta (coincidencia ${matchType}): "${response.substring(0, 50)}${response.length > 50 ? '...' : ''}"`, 'info');
+        try {
+          const clientToUse = this.activeAccount ? this.activeAccount.client : client;
+          
+          // MEJORA 4: Asegurarnos de que todas las respuestas contengan el mensaje de redirección
+          if (!response.includes(config.openai.privateNumber)) {
+            response += `\n\n${config.openai.privateMessage}`;
+          }
+          
+          await clientToUse.sendMessage(message.from, response);
+          utils.log('Respuesta enviada exitosamente', 'success');
+
+          if (this.io) {
+            this.io.emit('botChatMessage', {
+              from: 'BOT',
+              message: response
+            });
+          }
+        } catch (error) {
+          utils.log(`Error al enviar respuesta: ${error.message}`, 'error');
+          if (client !== this.activeAccount?.client) {
+            try {
+              utils.log('Intentando enviar con el cliente original...', 'info');
+              await client.sendMessage(message.from, response);
+              utils.log('Respuesta enviada con cliente original', 'success');
+            } catch (secondError) {
+              utils.log(`Error al enviar con cliente original: ${secondError.message}`, 'error');
+              this.forwardToAdmin(message, client, isGroup, 'Error al enviar respuesta');
+            }
+          } else {
             this.forwardToAdmin(message, client, isGroup, 'Error al enviar respuesta');
           }
-        } else {
-          this.forwardToAdmin(message, client, isGroup, 'Error al enviar respuesta');
         }
-      }
-    } else {
-      utils.log('No se encontró respuesta en la base de conocimiento, consultando a la IA...', 'info');
+      } else {
+        utils.log('No se encontró respuesta en la base de conocimiento, consultando a la IA...', 'info');
 
-      try {
-        const aiResponse = await aiHandler.generateResponse(messageText);
-        utils.log(`Respuesta generada por IA: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
-        const clientToUse = this.activeAccount ? this.activeAccount.client : client;
-        await clientToUse.sendMessage(message.from, aiResponse);
-        
-        if (this.io) {
-          this.io.emit('botChatMessage', {
-            from: 'BOT-AI',
-            message: aiResponse
-          });
+        try {
+          // MEJORA 5: La respuesta de la IA ya debería incluir el mensaje de redirección 
+          // gracias a los cambios en ai-handler.js
+          const aiResponse = await aiHandler.generateResponse(messageText);
+          utils.log(`Respuesta generada por IA: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
+          const clientToUse = this.activeAccount ? this.activeAccount.client : client;
+          await clientToUse.sendMessage(message.from, aiResponse);
+          
+          if (this.io) {
+            this.io.emit('botChatMessage', {
+              from: 'BOT-AI',
+              message: aiResponse
+            });
+          }
+          
+          // Notificamos al admin pero no requiere respuesta
+          this.notifyAdminAIResponse(message, messageText, aiResponse);
+          
+        } catch (aiError) {
+          utils.log(`Error al consultar a la IA: ${aiError.message}`, 'error');
+          
+          // MEJORA 6: Si hay error en la IA, enviamos directamente mensaje de redirección
+          try {
+            const clientToUse = this.activeAccount ? this.activeAccount.client : client;
+            await clientToUse.sendMessage(message.from, config.openai.privateMessage);
+            utils.log('Mensaje de redirección enviado después de error de IA', 'info');
+          } catch (redirError) {
+            utils.log(`Error al enviar redirección: ${redirError.message}`, 'error');
+          }
+          
+          this.forwardToAdmin(message, client, isGroup, 'Error al generar respuesta con IA');
         }
-        
-        this.forwardToAdmin(message, client, isGroup, 'Respuesta generada por IA');
-        
-      } catch (aiError) {
-        utils.log(`Error al consultar a la IA: ${aiError.message}`, 'error');
-        this.forwardToAdmin(message, client, isGroup, 'Error al generar respuesta con IA');
       }
+    }
+  }
+
+  // NUEVO: Método para notificar al admin sobre respuestas de IA sin requerir acción
+  async notifyAdminAIResponse(message, userMessage, aiResponse) {
+    try {
+      for (const adminNumber of config.whatsapp.adminNumbers) {
+        utils.log(`Notificando respuesta de IA a administrador ${adminNumber}`, 'info');
+        let adminMsg = `ℹ️ *RESPUESTA AUTOMÁTICA DE IA* ℹ️\n\n`;
+        adminMsg += `*De:* ${message._data.notifyName || message.author || "Usuario"}\n` +
+                    `*Chat:* ${message.from}\n` +
+                    `*Mensaje del usuario:* ${userMessage}\n\n` +
+                    `*Respuesta enviada:* ${aiResponse}\n\n` +
+                    `Esta es solo una notificación, no se requiere acción.`;
+
+        // Usamos el cliente activo o el cliente que recibió el mensaje
+        const clientToUse = this.activeAccount ? this.activeAccount.client : null;
+        if (clientToUse) {
+          await clientToUse.sendMessage(adminNumber, adminMsg);
+        }
+      }
+    } catch (error) {
+      utils.log(`Error al notificar a admin sobre respuesta IA: ${error.message}`, 'error');
     }
   }
 

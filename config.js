@@ -15,7 +15,8 @@ module.exports = {
     temperature: 0.7,
     privateRedirect: process.env.PRIVATE_REDIRECT === 'false' ? false : true,
     privateNumber: process.env.PRIVATE_NUMBER || '4961260597',
-    privateMessage: process.env.PRIVATE_MESSAGE || "Gracias por tu consulta. Para brindarte una atención personalizada, por favor envíame un mensaje al privado: 4961260597"
+    // Mensaje de redirección mejorado sin detalles técnicos
+    privateMessage: process.env.PRIVATE_MESSAGE || "Gracias por tu consulta. Para brindarte una atención personalizada y responder correctamente a tus dudas, por favor envíame un mensaje directo al: 4961260597"
   },
   
   // Configuración de WhatsApp
@@ -38,14 +39,13 @@ module.exports = {
 
     // Números de administradores (pueden controlar el bot con comandos tipo !learn, !responder, etc.)
    adminNumbers: [
-  '521496143694@c.us', 
-  '521496126097@c.us', 
-  '521494543930@c.us'
-], // Reemplaza con tus números reales
+      '521496143694@c.us', 
+      '521496126097@c.us', 
+      '521494543930@c.us'
+    ], // Reemplaza con tus números reales
         
-
-    // Mensaje de redirección para chats privados
-    redirectMessage: "Este es un bot automático. Por favor, envía tus mensajes al número 4961260597 para recibir atención personalizada. Gracias.",
+    // Mensaje de redirección para chats privados (mejorado)
+    redirectMessage: "¡Hola! Este es un bot automático para grupos. Para recibir atención personalizada, por favor envía tus consultas directamente al número 4961260597. ¡Gracias!",
 
     // Cuenta principal (única)
     mainAccount: {
