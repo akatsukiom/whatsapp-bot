@@ -1125,7 +1125,10 @@ class WhatsAppManager {
 
   // Manejar mensajes entrantes
   async handleIncomingMessage(message, client) {
-    utils.log(`Mensaje recibido: "${message.body}" de ${message.from}`, 'info');
+     utils.log(`Mensaje recibido: "${message.body}" de ${message.from} - autor: ${message.author || 'desconocido'}`, 'info');
+  utils.log(`Administradores configurados: ${JSON.stringify(config.whatsapp.adminNumbers)}`, 'info');
+  utils.log(`Es admin: ${config.whatsapp.adminNumbers.includes(message.from) || (message.author && config.whatsapp.adminNumbers.includes(message.author))}`, 'info');
+  utils.log(`Es grupo: ${message.from.endsWith('@g.us')}`, 'info');
 
     // Emitir al panel
     if (this.io) {
