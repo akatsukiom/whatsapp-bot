@@ -2,7 +2,7 @@
 const dotenv = require('dotenv');
 const fs = require('fs');
 const path = require('path');
-const utils = require('./utils');
+const utils = require('./modules/utils');
 const setupServer = require('./server');
 const config = require('./config');
 
