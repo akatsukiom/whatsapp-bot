@@ -7,7 +7,10 @@ const fs = require('fs');
 const config = require('../config');
 
 // Crear directorio de logs si no existe
-const logDir = path.dirname(config.logging.file);
+const logDir = config.logging && config.logging.file 
+  ? path.dirname(config.logging.file) 
+  : path.join(process.cwd(), 'logs');
+
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
@@ -27,14 +30,20 @@ const logFormat = winston.format.combine(
 
 // Crear logger
 const logger = winston.createLogger({
-  level: config.logging.level,
+  level: config.logging && config.logging.level ? config.logging.level : 'info',
   format: logFormat,
   transports: [
     // Log a archivo
     new winston.transports.File({ 
-      filename: config.logging.file,
-      maxsize: config.logging.maxSize,
-      maxFiles: config.logging.maxFiles
+      filename: config.logging && config.logging.file 
+        ? config.logging.file 
+        : path.join(logDir, 'app.log'),
+      maxsize: config.logging && config.logging.maxSize 
+        ? config.logging.maxSize 
+        : '10m',
+      maxFiles: config.logging && config.logging.maxFiles 
+        ? config.logging.maxFiles 
+        : 5
     }),
     // Log a consola en modo desarrollo
     new winston.transports.Console({
