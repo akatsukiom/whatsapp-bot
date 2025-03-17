@@ -1,7 +1,29 @@
 // Funciones auxiliares para el sistema
 const fs = require('fs');
 const path = require('path');
-const config = require('./config');
+
+// Configuración de directorios
+const rootDir = process.cwd();
+const config = {
+  paths: {
+    public: path.join(rootDir, 'public'),
+    sessions: path.join(rootDir, '.wwebjs_auth'),
+    logs: path.join(rootDir, 'logs'),
+    backups: path.join(rootDir, 'backups')
+  },
+  files: {
+    learningData: path.join(rootDir, 'learning-data.json'),
+    errorLog: 'error.log',
+    accessLog: 'access.log'
+  },
+  initialLearningData: {
+    responses: {},
+    mediaHandlers: {}
+  },
+  logging: {
+    saveToFile: true
+  }
+};
 
 /**
  * Verifica que existan las carpetas necesarias y las crea si no existen
@@ -30,22 +52,13 @@ function ensureDirectories() {
     fs.mkdirSync(config.paths.backups, { recursive: true });
     log(`Carpeta ${config.paths.backups} creada correctamente`, 'success');
   }
-  
-  // Crear carpeta para archivos de datos si está en una ruta diferente
-  if (config.paths.learningData) {
-    const learningDataDir = path.dirname(config.paths.learningData);
-    if (!fs.existsSync(learningDataDir)) {
-      fs.mkdirSync(learningDataDir, { recursive: true });
-      log(`Carpeta ${learningDataDir} creada correctamente`, 'success');
-    }
-  }
 }
 
 /**
  * Crea el archivo learning-data.json inicial si no existe
  */
 function createLearningDataFile() {
-  const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
+  const filePath = config.files.learningData;
   
   if (!fs.existsSync(filePath)) {
     try {
@@ -71,7 +84,7 @@ function createLearningDataFile() {
  */
 function checkFilePermissions() {
   try {
-    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
+    const filePath = config.files.learningData;
     
     // Intentar escribir en un archivo temporal para verificar permisos
     const testFile = `${filePath}.test`;
@@ -92,7 +105,7 @@ function checkFilePermissions() {
  */
 function saveLearningData(data) {
   try {
-    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
+    const filePath = config.files.learningData;
     
     // Asegurar que el directorio existe
     const dir = path.dirname(filePath);
@@ -122,19 +135,21 @@ function saveLearningData(data) {
  */
 function loadLearningData() {
   try {
-    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
+    const filePath = config.files.learningData;
     log(`Intentando cargar datos de aprendizaje desde: ${filePath}`, 'info');
     
     if (!fs.existsSync(filePath)) {
       log(`Archivo ${filePath} no encontrado, se creará una base de datos inicial`, 'warning');
-      return null;
+      saveLearningData(config.initialLearningData);
+      return config.initialLearningData;
     }
     
     const data = fs.readFileSync(filePath, 'utf8');
     
     if (!data || data.trim() === '') {
       log('Archivo vacío, se utilizarán datos por defecto', 'warning');
-      return null;
+      saveLearningData(config.initialLearningData);
+      return config.initialLearningData;
     }
     
     try {
@@ -155,11 +170,12 @@ function loadLearningData() {
       return parsedData;
     } catch (parseError) {
       log(`Error al analizar JSON: ${parseError.message}`, 'error');
-      return null;
+      saveLearningData(config.initialLearningData);
+      return config.initialLearningData;
     }
   } catch (error) {
     log(`Error al cargar datos de aprendizaje: ${error.message}`, 'error');
-    return null;
+    return config.initialLearningData;
   }
 }
 
@@ -178,7 +194,9 @@ function isGroupChat(fromId) {
  * @returns {boolean} - true si es administrador, false si no
  */
 function isAdminNumber(number) {
-  return config.whatsapp.adminNumbers.includes(number);
+  // Define aquí tus números de administrador
+  const adminNumbers = ['521234567890@c.us']; // Reemplaza con tu número
+  return adminNumbers.includes(number);
 }
 
 /**
@@ -248,7 +266,7 @@ function log(message, type = 'info') {
  */
 function backupLearningData() {
   try {
-    const filePath = config.paths.learningData || path.join(config.paths.public, config.files.learningData);
+    const filePath = config.files.learningData;
     
     if (!fs.existsSync(filePath)) {
       log(`No se puede crear copia de seguridad, el archivo ${filePath} no existe`, 'warning');
@@ -295,7 +313,6 @@ function ensureValidDataStructure(data) {
 
 /**
  * Sanitiza un mensaje para evitar inyección de comandos
- * Versión mejorada con mejor manejo de caracteres especiales
  * @param {string} message - Mensaje a sanitizar
  * @returns {string} - Mensaje sanitizado
  */
