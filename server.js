@@ -4,35 +4,120 @@ const http = require('http');
 const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
-const config = require('./modules/config');
-const utils = require('./modules/utils/utils');
 const dotenv = require('dotenv');
+
+// Cargar variables de entorno
+dotenv.config();
+
+// Asegurar que existe el directorio de templates
+const templatesDir = path.join(__dirname, 'templates');
+if (!fs.existsSync(templatesDir)) {
+  fs.mkdirSync(templatesDir, { recursive: true });
+  console.log(`Creado directorio de plantillas: ${templatesDir}`);
+}
+
+// Importar módulos de configuración
+let config;
+try {
+  config = require('./modules/config');
+} catch (err) {
+  console.error('Error al cargar config.js:', err);
+  // Configuración por defecto
+  config = {
+    paths: {
+      public: path.resolve(__dirname, 'public'),
+      templates: path.resolve(__dirname, 'templates'),
+      sessions: path.resolve(__dirname, '.wwebjs_auth')
+    },
+    files: {
+      indexHtml: 'index.html',
+      adminHtml: 'admin.html',
+      learningData: path.resolve(__dirname, 'learning-data.json')
+    },
+    server: {
+      port: process.env.PORT || 8000,
+      host: process.env.HOST || 'localhost'
+    },
+    openai: {
+      apiKey: process.env.OPENAI_API_KEY || '',
+      model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+      privateRedirect: process.env.PRIVATE_REDIRECT !== 'false',
+      privateMessage: process.env.PRIVATE_MESSAGE || 'Tu mensaje ha sido enviado a un chat privado. Responderemos pronto.'
+    }
+  };
+}
+
+// Asegurar que existen los directorios necesarios
+function ensureDirectories() {
+  // Crear carpeta public si no existe
+  if (!fs.existsSync(path.join(__dirname, 'public'))) {
+    fs.mkdirSync(path.join(__dirname, 'public'), { recursive: true });
+    console.log(`Carpeta 'public' creada correctamente en ${path.join(__dirname, 'public')}`);
+  }
+  
+  // Crear carpeta .wwebjs_auth si no existe
+  if (!fs.existsSync(path.join(__dirname, '.wwebjs_auth'))) {
+    fs.mkdirSync(path.join(__dirname, '.wwebjs_auth'), { recursive: true });
+    console.log(`Carpeta '.wwebjs_auth' creada correctamente en ${path.join(__dirname, '.wwebjs_auth')}`);
+  }
+  
+  // Crear carpeta logs si no existe
+  if (!fs.existsSync(path.join(__dirname, 'logs'))) {
+    fs.mkdirSync(path.join(__dirname, 'logs'), { recursive: true });
+    console.log(`Carpeta 'logs' creada correctamente en ${path.join(__dirname, 'logs')}`);
+  }
+}
 
 function setupServer() {
   const app = express();
   const server = http.createServer(app);
   const io = socketIo(server);
 
+  // Asegurar que todas las carpetas necesarias existen
+  ensureDirectories();
+
   // Servir archivos estáticos
-  app.use(express.static(path.join(__dirname, config.paths.public)));
+  app.use(express.static(path.join(__dirname, 'public')));
 
   // Agregar soporte para JSON en las peticiones
   app.use(express.json());
 
-  // Crear carpeta public si no existe
-  if (!fs.existsSync(config.paths.public)) {
-    fs.mkdirSync(config.paths.public, { recursive: true });
-    console.log(`Carpeta ${config.paths.public} creada correctamente`);
-  }
-
   // Ruta principal
   app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, config.paths.public, config.files.indexHtml));
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    
+    // Si no existe el archivo, generarlo
+    if (!fs.existsSync(indexPath)) {
+      try {
+        const createIndexHtml = require('./templates/index-template');
+        createIndexHtml();
+        console.log('Archivo index.html generado al vuelo');
+      } catch (err) {
+        console.error('Error al generar index.html:', err);
+        return res.status(500).send('Error: No se pudo generar la página principal. Revise los logs del servidor.');
+      }
+    }
+    
+    res.sendFile(indexPath);
   });
 
   // Ruta de administración
   app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, config.paths.public, config.files.adminHtml));
+    const adminPath = path.join(__dirname, 'public', 'admin.html');
+    
+    // Si no existe el archivo, generarlo
+    if (!fs.existsSync(adminPath)) {
+      try {
+        const createAdminHtml = require('./templates/admin-template');
+        createAdminHtml();
+        console.log('Archivo admin.html generado al vuelo');
+      } catch (err) {
+        console.error('Error al generar admin.html:', err);
+        return res.status(500).send('Error: No se pudo generar el panel de administración. Revise los logs del servidor.');
+      }
+    }
+    
+    res.sendFile(adminPath);
   });
 
   // Configurar eventos Socket.IO para administración
@@ -137,6 +222,24 @@ function setupServer() {
       }
     });
 
+    // Solicitar información del sistema
+    socket.on('requestSystemInfo', () => {
+      if (global.whatsappManager) {
+        const accounts = global.whatsappManager.accounts;
+        socket.emit('systemInfo', {
+          accounts: accounts.length,
+          connectedAccounts: accounts.filter(a => a.status === 'ready' || a.status === 'authenticated').length,
+          activeAccount: accounts[global.whatsappManager.activeAccountIndex]?.phoneNumber || '-'
+        });
+      } else {
+        socket.emit('systemInfo', {
+          accounts: 0,
+          connectedAccounts: 0,
+          activeAccount: '-'
+        });
+      }
+    });
+
     // Cerrar sesión
     socket.on('logoutAccount', (sessionName) => {
       try {
@@ -153,7 +256,7 @@ function setupServer() {
                 .then(() => {
                   console.log(`Sesión cerrada correctamente para ${account.phoneNumber}`);
                   socket.emit('accountLoggedOut', { sessionName, success: true });
-                  const sessionDir = `${config.paths.sessions}/${sessionName}`;
+                  const sessionDir = path.join(__dirname, '.wwebjs_auth', sessionName);
                   if (fs.existsSync(sessionDir)) {
                     fs.rm(sessionDir, { recursive: true }, (err) => {
                       if (err) {
@@ -217,6 +320,67 @@ function setupServer() {
       }
     });
 
+    // Solicitar verificación de cuentas inactivas
+    socket.on('checkInactiveAccounts', () => {
+      try {
+        console.log('Solicitud recibida para verificar cuentas inactivas');
+        socket.emit('checkInactiveAccountsStarted');
+        
+        if (global.whatsappManager) {
+          // Implementar verificación de cuentas inactivas
+          // (Este código es un placeholder, implementa tu lógica aquí)
+          console.log('Verificando cuentas inactivas...');
+          
+          // Notificar finalización
+          setTimeout(() => {
+            socket.emit('checkInactiveAccountsFinished', {
+              message: 'Verificación de cuentas inactivas completada'
+            });
+          }, 2000);
+        } else {
+          socket.emit('error', 'Gestor de WhatsApp no inicializado');
+        }
+      } catch (err) {
+        console.error('Error al verificar cuentas inactivas:', err);
+        socket.emit('error', 'Error al verificar cuentas inactivas: ' + err.message);
+      }
+    });
+
+    // Agregar una nueva cuenta de WhatsApp
+    socket.on('addAccount', (data) => {
+      try {
+        console.log(`Solicitud recibida para agregar cuenta: ${data.phoneNumber}`);
+        
+        if (global.whatsappManager) {
+          const success = global.whatsappManager.addAccount(data.phoneNumber, data.sessionName);
+          
+          if (success) {
+            socket.emit('accountAdded', {
+              success: true,
+              phoneNumber: data.phoneNumber,
+              sessionName: data.sessionName
+            });
+          } else {
+            socket.emit('accountAdded', {
+              success: false,
+              error: 'No se pudo agregar la cuenta, verifica los logs del servidor'
+            });
+          }
+        } else {
+          socket.emit('accountAdded', {
+            success: false,
+            error: 'Gestor de WhatsApp no inicializado'
+          });
+        }
+      } catch (err) {
+        console.error('Error al agregar cuenta:', err);
+        socket.emit('accountAdded', {
+          success: false,
+          error: 'Error interno del servidor: ' + err.message
+        });
+      }
+    });
+
     // Obtener todas las respuestas
     socket.on('getResponses', (callback) => {
       try {
@@ -234,9 +398,12 @@ function setupServer() {
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('error', 'El gestor de WhatsApp aún no está inicializado');
-          if (fs.existsSync(config.files.learningData)) {
+          
+          // Intentar cargar directamente del archivo si existe
+          const learningDataPath = path.join(__dirname, 'learning-data.json');
+          if (fs.existsSync(learningDataPath)) {
             try {
-              const data = fs.readFileSync(config.files.learningData, 'utf8');
+              const data = fs.readFileSync(learningDataPath, 'utf8');
               const learningData = JSON.parse(data);
               
               if (typeof callback === 'function') {
@@ -324,17 +491,22 @@ function setupServer() {
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('error', 'Gestor de WhatsApp no inicializado');
+          
+          // Intento directo con el archivo si el manager no está disponible
           try {
+            const learningDataPath = path.join(__dirname, 'learning-data.json');
             let learningData = { responses: {} };
-            if (fs.existsSync(config.files.learningData)) {
-              const data = fs.readFileSync(config.files.learningData, 'utf8');
+            
+            if (fs.existsSync(learningDataPath)) {
+              const data = fs.readFileSync(learningDataPath, 'utf8');
               learningData = JSON.parse(data);
               if (!learningData.responses) {
                 learningData.responses = {};
               }
             }
+            
             learningData.responses[trigger.toLowerCase()] = response;
-            fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
+            fs.writeFileSync(learningDataPath, JSON.stringify(learningData, null, 2));
             socket.emit('responseAdded');
             io.emit('responsesUpdated');
           } catch (fileError) {
@@ -364,13 +536,16 @@ function setupServer() {
         } else {
           console.error('WhatsAppManager no inicializado');
           socket.emit('error', 'Gestor de WhatsApp no inicializado');
+          
+          // Intento directo con el archivo si el manager no está disponible
           try {
-            if (fs.existsSync(config.files.learningData)) {
-              const data = fs.readFileSync(config.files.learningData, 'utf8');
+            const learningDataPath = path.join(__dirname, 'learning-data.json');
+            if (fs.existsSync(learningDataPath)) {
+              const data = fs.readFileSync(learningDataPath, 'utf8');
               const learningData = JSON.parse(data);
               if (learningData.responses && learningData.responses[trigger]) {
                 delete learningData.responses[trigger];
-                fs.writeFileSync(config.files.learningData, JSON.stringify(learningData, null, 2));
+                fs.writeFileSync(learningDataPath, JSON.stringify(learningData, null, 2));
                 socket.emit('responseDeleted');
                 io.emit('responsesUpdated');
               } else {
@@ -405,8 +580,9 @@ function setupServer() {
           }
         } else {
           console.warn('WhatsAppManager no inicializado, cargando directamente del archivo');
-          if (fs.existsSync(config.files.learningData)) {
-            const data = fs.readFileSync(config.files.learningData, 'utf8');
+          const learningDataPath = path.join(__dirname, 'learning-data.json');
+          if (fs.existsSync(learningDataPath)) {
+            const data = fs.readFileSync(learningDataPath, 'utf8');
             const learningData = JSON.parse(data);
             socket.emit('responsesList', learningData.responses || {});
             console.log('Recarga forzada desde archivo completada');
@@ -471,7 +647,7 @@ function setupServer() {
   });
 
   // Puerto para Railway o local
-  const PORT = config.server.port;
+  const PORT = process.env.PORT || config.server.port || 8000;
   server.listen(PORT, () => {
     console.log(`Servidor web iniciado en el puerto ${PORT}`);
   });

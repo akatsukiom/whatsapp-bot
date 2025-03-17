@@ -10,42 +10,58 @@ const utils = require('./modules/utils/utils');
 // Cargar variables de entorno
 dotenv.config();
 
+// Asegurar que las carpetas necesarias existen
+utils.ensureDirectories();
+
 // Configuración del servidor
 const setupServer = require('./server');
 
-// Cargar o generar las plantillas HTML si no existen
+// Asegurar que existe la carpeta public y las plantillas HTML
 try {
   if (!fs.existsSync(path.join(__dirname, 'public'))) {
     fs.mkdirSync(path.join(__dirname, 'public'), { recursive: true });
+    logger.info(`Carpeta 'public' creada correctamente en ${path.join(__dirname, 'public')}`);
   }
   
   if (!fs.existsSync(path.join(__dirname, 'public', 'index.html'))) {
     const createIndexHtml = require('./templates/index-template');
     createIndexHtml();
+    logger.info('Archivo index.html creado correctamente');
   }
   
   if (!fs.existsSync(path.join(__dirname, 'public', 'admin.html'))) {
     const createAdminHtml = require('./templates/admin-template');
     createAdminHtml();
+    logger.info('Archivo admin.html creado correctamente');
   }
 } catch (err) {
   console.error('Error al generar archivos HTML:', err);
+  logger.error(`Error al generar archivos HTML: ${err.message}`);
 }
 
 // Asegurarnos de que existe el archivo learning-data.json
-if (!fs.existsSync(path.join(__dirname, 'learning-data.json'))) {
-  fs.writeFileSync(
-    path.join(__dirname, 'learning-data.json'), 
-    JSON.stringify({ responses: {}, mediaHandlers: {} }, null, 2)
-  );
+const learningDataPath = path.join(__dirname, 'learning-data.json');
+if (!fs.existsSync(learningDataPath)) {
+  try {
+    fs.writeFileSync(
+      learningDataPath, 
+      JSON.stringify({ responses: {}, mediaHandlers: {} }, null, 2)
+    );
+    logger.info(`Archivo learning-data.json creado correctamente en ${learningDataPath}`);
+  } catch (err) {
+    console.error('Error al crear archivo learning-data.json:', err);
+    logger.error(`Error al crear archivo learning-data.json: ${err.message}`);
+  }
 }
 
 // Inicializar el manejador de IA si está configurado
 if (process.env.OPENAI_API_KEY) {
   try {
     global.aiHandler = require('./ai-handler');
+    logger.info('Manejador de IA inicializado correctamente');
   } catch (err) {
     console.error('Error al cargar el manejador de IA:', err);
+    logger.error(`Error al cargar el manejador de IA: ${err.message}`);
   }
 }
 
@@ -67,6 +83,8 @@ class WhatsAppManager {
     
     // Hacer disponible el manager globalmente
     global.whatsappManager = this;
+    
+    logger.info('WhatsAppManager inicializado correctamente');
   }
   
   // Agregar cuenta
@@ -82,6 +100,13 @@ class WhatsAppManager {
     
     try {
       logger.info(`Agregando cuenta ${phoneNumber} con sesión ${formattedSessionName}`);
+      
+      // Crear carpeta de autenticación si no existe
+      const authPath = path.join(__dirname, '.wwebjs_auth');
+      if (!fs.existsSync(authPath)) {
+        fs.mkdirSync(authPath, { recursive: true });
+        logger.info(`Carpeta de autenticación creada en ${authPath}`);
+      }
       
       // Configurar cliente de WhatsApp
       const client = new Client({
