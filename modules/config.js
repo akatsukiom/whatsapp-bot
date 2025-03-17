@@ -2,11 +2,15 @@
  * Configuración general de la aplicación
  */
 const path = require('path');
+require('dotenv').config();
+
+// Directorio raíz del proyecto
+const rootDir = process.cwd();
 
 module.exports = {
   // Configuración de WhatsApp
   whatsapp: {
-    sessionFile: path.join(process.cwd(), '.wwebjs_auth', 'session.json'),
+    sessionFile: path.join(rootDir, '.wwebjs_auth', 'session.json'),
     puppeteer: {
       headless: true,
       args: [
@@ -20,8 +24,10 @@ module.exports = {
       ]
     },
     // Directorios para archivos multimedia
-    mediaPath: path.join(process.cwd(), 'media'),
-    downloadPath: path.join(process.cwd(), 'downloads')
+    mediaPath: path.join(rootDir, 'media'),
+    downloadPath: path.join(rootDir, 'downloads'),
+    reconnectInterval: 30000, // 30 segundos
+    maxReconnectAttempts: 5
   },
   
   // Configuración del servidor
@@ -33,7 +39,7 @@ module.exports = {
   // Configuración de logging
   logging: {
     level: process.env.LOG_LEVEL || 'info',
-    file: path.join(process.cwd(), 'logs', 'app.log'),
+    file: path.join(rootDir, 'logs', 'app.log'),
     maxSize: '10m',
     maxFiles: 5
   },
@@ -65,5 +71,27 @@ module.exports = {
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization']
     }
+  },
+  
+  // Rutas de archivos y directorios (añadido)
+  paths: {
+    public: path.join(rootDir, 'public'),
+    templates: path.join(rootDir, 'templates'),
+    sessions: path.join(rootDir, 'sessions')
+  },
+  
+  // Nombres de archivos (añadido)
+  files: {
+    indexHtml: 'index.html',
+    adminHtml: 'admin.html',
+    learningData: path.join(rootDir, 'learning-data.json')
+  },
+  
+  // Configuración de OpenAI (añadido)
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+    privateRedirect: process.env.PRIVATE_REDIRECT !== 'false',
+    privateMessage: process.env.PRIVATE_MESSAGE || 'Tu mensaje ha sido enviado a un chat privado. Responderemos pronto.'
   }
 };

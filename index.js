@@ -1,118 +1,97 @@
-// index.js - Punto de entrada principal para WhatsApp Bot Manager
-const dotenv = require('dotenv');
-const fs = require('fs');
+/**
+ * Configuración general de la aplicación
+ */
 const path = require('path');
-const utils = require('./modules/utils/logger');
-const logger = require('./modules/utils/logger');
+require('dotenv').config();
 
-const setupServer = require('./server');
-const config = require('./config');
+// Directorio raíz del proyecto
+const rootDir = process.cwd();
 
-// Cargar variables de entorno
-dotenv.config();
-
-// Inicialización
-async function main() {
-  console.log('Iniciando WhatsApp Bot Manager...');
+module.exports = {
+  // Configuración de WhatsApp
+  whatsapp: {
+    sessionFile: path.join(rootDir, '.wwebjs_auth', 'session.json'),
+    puppeteer: {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu'
+      ]
+    },
+    // Directorios para archivos multimedia
+    mediaPath: path.join(rootDir, 'media'),
+    downloadPath: path.join(rootDir, 'downloads'),
+    reconnectInterval: 30000, // 30 segundos
+    maxReconnectAttempts: 5
+  },
   
-  // Asegurar que existen las carpetas necesarias
-  utils.ensureDirectories();
+  // Configuración del servidor
+  server: {
+    port: process.env.PORT || 3000,
+    host: process.env.HOST || 'localhost'
+  },
   
-  // Crear archivos necesarios si no existen
-  const templatesExist = fs.existsSync(path.join(config.paths.public, 'index.html')) && 
-                        fs.existsSync(path.join(config.paths.public, 'admin.html'));
-                        
-  if (!templatesExist) {
-    try {
-      // Cargar módulos de plantillas
-      const createIndexHtml = require('./templates/index-template');
-      const createAdminHtml = require('./templates/admin-template');
-      
-      // Crear archivos HTML
-      createIndexHtml();
-      createAdminHtml();
-      utils.log('Archivos HTML generados correctamente', 'success');
-    } catch (error) {
-      utils.log(`Error al generar archivos HTML: ${error.message}`, 'error');
+  // Configuración de logging
+  logging: {
+    level: process.env.LOG_LEVEL || 'info',
+    file: path.join(rootDir, 'logs', 'app.log'),
+    maxSize: '10m',
+    maxFiles: 5
+  },
+  
+  // Comandos del bot
+  commands: {
+    prefix: '!',
+    cooldown: 3000 // milisegundos
+  },
+  
+  // Configuración de la base de datos (si la usas)
+  database: {
+    uri: process.env.DB_URI || 'mongodb://localhost:27017/whatsapp-bot',
+    options: {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
     }
+  },
+  
+  // Configuración de API (si expones una API)
+  api: {
+    enabled: true,
+    auth: {
+      secret: process.env.API_SECRET || 'tu-clave-secreta',
+      expiresIn: '24h'
+    },
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
+      allowedHeaders: ['Content-Type', 'Authorization']
+    }
+  },
+  
+  // Rutas de archivos y directorios (añadido)
+  paths: {
+    public: path.join(rootDir, 'public'),
+    templates: path.join(rootDir, 'templates'),
+    sessions: path.join(rootDir, 'sessions')
+  },
+  
+  // Nombres de archivos (añadido)
+  files: {
+    indexHtml: 'index.html',
+    adminHtml: 'admin.html',
+    learningData: path.join(rootDir, 'learning-data.json')
+  },
+  
+  // Configuración de OpenAI (añadido)
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+    privateRedirect: process.env.PRIVATE_REDIRECT !== 'false',
+    privateMessage: process.env.PRIVATE_MESSAGE || 'Tu mensaje ha sido enviado a un chat privado. Responderemos pronto.'
   }
-  
-  // Crear archivo de datos de aprendizaje si no existe
-  utils.createLearningDataFile();
-  
-  // Verificar permisos de archivos
-  utils.checkFilePermissions();
-  
-  // Iniciar el servidor web
-  const { app, server, io } = setupServer();
-  
-  try {
-    // Cargar el gestor de WhatsApp
-    const WhatsAppManager = require('./modules/whatsapp');
-    
-    // Inicializar el gestor
-    const whatsappManager = new WhatsAppManager(config.whatsapp);
-    
-    // Guardar en global para acceso desde otros módulos
-    global.whatsappManager = whatsappManager;
-    
-    // Cargar el módulo de IA si está configurado
-    if (process.env.OPENAI_API_KEY) {
-      global.aiHandler = require('./ai-handler');
-      utils.log('Módulo de IA inicializado con API key de OpenAI', 'success');
-    } else {
-      utils.log('No se encontró API key de OpenAI, las respuestas de IA estarán desactivadas', 'warning');
-    }
-    
-    // Inicializar el gestor de WhatsApp
-    await whatsappManager.initialize();
-    utils.log('WhatsApp Bot Manager inicializado correctamente', 'success');
-    
-  } catch (error) {
-    utils.log(`Error al inicializar WhatsApp Manager: ${error.message}`, 'error');
-    utils.log('El servidor web continuará funcionando sin el módulo de WhatsApp', 'warning');
-  }
-  
-  // Manejar terminación graceful
-  setupGracefulShutdown(server);
-}
-
-// Configurar manejo de cierre graceful
-function setupGracefulShutdown(server) {
-  const shutdown = async () => {
-    utils.log('Cerrando aplicación...', 'warning');
-    
-    try {
-      // Desconectar WhatsApp si está activo
-      if (global.whatsappManager) {
-        await global.whatsappManager.logout();
-      }
-      
-      // Cerrar el servidor HTTP
-      if (server) {
-        server.close();
-      }
-      
-      utils.log('Aplicación cerrada correctamente', 'success');
-    } catch (err) {
-      utils.log(`Error al cerrar aplicación: ${err.message}`, 'error');
-    }
-    
-    process.exit(0);
-  };
-  
-  // Escuchar eventos de terminación
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-  process.on('uncaughtException', (err) => {
-    utils.log(`Error no manejado: ${err.message}`, 'error');
-    utils.log(err.stack, 'error');
-    shutdown();
-  });
-}
-
-// Ejecutar la función principal
-main().catch(error => {
-  console.error('Error fatal al iniciar la aplicación:', error);
-  process.exit(1);
-});
+};
