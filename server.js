@@ -4,7 +4,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
-const config = require('./config');
+const config = require('./modules/config');
 const utils = require('./utils');
 const dotenv = require('dotenv');
 
