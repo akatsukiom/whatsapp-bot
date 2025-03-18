@@ -24,11 +24,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Hacer io disponible globalmente
 global.io = io;
 
-// Iniciar el servidor
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
-});
 
 // Asegurar que existe el directorio de templates
 const templatesDir = path.join(__dirname, 'templates');
