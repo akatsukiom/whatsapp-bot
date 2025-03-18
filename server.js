@@ -739,7 +739,7 @@ function setupServer() {
   });
 
   // Puerto para Railway o local
-  const PORT = process.env.PORT || config.server.port || 8000;
+  const PORT = process.env.PORT || config.server.port || 3000;
   server.listen(PORT, () => {
     console.log(`Servidor web iniciado en el puerto ${PORT}`);
   });
