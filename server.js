@@ -739,11 +739,14 @@ function setupServer() {
   });
 
   // Puerto para Railway o local
-  const PORT = process.env.PORT || config.server.port || 3000;
-  server.listen(PORT, () => {
-    console.log(`Servidor web iniciado en el puerto ${PORT}`);
-  });
+ // En tu archivo server.js o index.js
 
+const PORT = process.env.PORT || 3000;
+const HOST = '0.0.0.0'; // Importante para Railway
+
+server.listen(PORT, HOST, () => {
+  console.log(`Servidor web iniciado en el puerto ${PORT}`);
+});
   return { app, server, io };
 }
 
