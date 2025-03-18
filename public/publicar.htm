@@ -67,6 +67,50 @@
       margin-top: 20px;
       text-align: center;
     }
+    .image-preview {
+      max-width: 100%;
+      max-height: 300px;
+      margin: 10px 0;
+      display: none;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+    .upload-btn-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      cursor: pointer;
+    }
+    .btn-upload {
+      border: 1px solid #075e54;
+      color: #075e54;
+      background-color: white;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .upload-btn-wrapper input[type=file] {
+      font-size: 100px;
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .btn-upload:hover {
+      background-color: #f1f1f1;
+    }
+    .image-input-container {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .file-name {
+      margin-left: 10px;
+      font-style: italic;
+      color: #6c757d;
+    }
   </style>
 </head>
 <body>
@@ -79,9 +123,18 @@
       <form id="publishForm">
         <div class="mb-3">
           <label for="mediaPath" class="form-label"><i class="bi bi-image me-2"></i>Ruta o URL de la imagen/video:</label>
-          <input type="text" class="form-control" id="mediaPath" name="mediaPath" required
-                 placeholder="Ej: https://ejemplo.com/imagen.jpg o /ruta/local/imagen.jpg">
-          <div class="form-text">Puede ser una URL completa o una ruta local relativa al servidor.</div>
+          <div class="image-input-container">
+            <input type="text" class="form-control" id="mediaPath" name="mediaPath" placeholder="Ej: https://ejemplo.com/imagen.jpg o /ruta/local/imagen.jpg">
+            <div class="upload-btn-wrapper">
+              <button type="button" class="btn btn-upload" id="uploadBtn">
+                <i class="bi bi-upload me-1"></i> Subir
+              </button>
+              <input type="file" id="fileInput" accept="image/*,video/*"/>
+            </div>
+          </div>
+          <div id="fileNameDisplay" class="file-name"></div>
+          <div class="form-text">Puede ser una URL completa, una ruta local o puedes subir un archivo directamente.</div>
+          <img id="imagePreview" class="image-preview" src="" alt="Vista previa"/>
         </div>
 
         <div class="mb-3">
@@ -119,61 +172,123 @@
   </div>
   
   <script>
-    document.getElementById('publishForm').addEventListener('submit', async function(e) {
+    // Referencias a elementos del DOM
+    const publishForm = document.getElementById('publishForm');
+    const mediaPathInput = document.getElementById('mediaPath');
+    const captionInput = document.getElementById('caption');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const imagePreview = document.getElementById('imagePreview');
+    const loading = document.getElementById('loading');
+    const resultContainer = document.getElementById('result-container');
+    const resultContent = document.getElementById('result-content');
+    const errorContainer = document.getElementById('error-container');
+    const errorContent = document.getElementById('error-content');
+    
+    // Manejar subida de archivos
+    fileInput.addEventListener('change', function() {
+      if (this.files && this.files[0]) {
+        const file = this.files[0];
+        fileNameDisplay.textContent = file.name;
+        
+        // Mostrar vista previa de la imagen
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            imagePreview.src = e.target.result;
+            imagePreview.style.display = 'block';
+          };
+          reader.readAsDataURL(file);
+        } else {
+          // Si es un video, no mostramos vista previa
+          imagePreview.style.display = 'none';
+        }
+        
+        // Actualizar el campo de entrada para mostrar el nombre del archivo
+        mediaPathInput.value = 'archivo local: ' + file.name;
+      }
+    });
+    
+    // Hacer clic en el botón de subir activa el input de tipo file
+    uploadBtn.addEventListener('click', function() {
+      fileInput.click();
+    });
+    
+    // Enviar formulario
+    publishForm.addEventListener('submit', async function(e) {
       e.preventDefault();
       
       // Obtener valores del formulario
-      const mediaPath = document.getElementById('mediaPath').value.trim();
-      const caption = document.getElementById('caption').value.trim();
+      let mediaPath = mediaPathInput.value.trim();
+      const caption = captionInput.value.trim();
       
       // Validación básica
-      if (!mediaPath) {
-        showError('Debes proporcionar una ruta o URL para el archivo multimedia');
+      if (!mediaPath && !fileInput.files[0]) {
+        showError('Debes proporcionar una ruta/URL para el archivo multimedia o subir un archivo');
         return;
       }
       
       // Mostrar loading
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('result-container').style.display = 'none';
-      document.getElementById('error-container').style.display = 'none';
+      loading.style.display = 'block';
+      resultContainer.style.display = 'none';
+      errorContainer.style.display = 'none';
       
       try {
-        // Enviar solicitud a la API
-        const res = await fetch('/api/publicar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediaPath, caption })
-        });
+        let formData = new FormData();
         
-        const data = await res.json();
-        
-        // Ocultar loading
-        document.getElementById('loading').style.display = 'none';
-        
-        if (data.success) {
-          // Mostrar resultado exitoso
-          const resultContent = document.getElementById('result-content');
-          resultContent.innerHTML = `
-            <p><strong>Estado:</strong> Éxito</p>
-            <p><strong>Mensaje:</strong> ${data.message}</p>
-            <p><strong>Grupos alcanzados:</strong> ${data.sentCount} de ${data.totalGroups}</p>
-          `;
-          document.getElementById('result-container').style.display = 'block';
+        // Si hay un archivo seleccionado, usarlo
+        if (fileInput.files[0]) {
+          formData.append('file', fileInput.files[0]);
+          formData.append('caption', caption);
+          
+          // Enviar mediante FormData
+          const res = await fetch('/api/upload-and-publish', {
+            method: 'POST',
+            body: formData
+          });
+          
+          const data = await res.json();
+          handleResponse(data);
         } else {
-          // Mostrar error
-          showError(`Error: ${data.error}`);
+          // Usar URL o ruta existente
+          const res = await fetch('/api/publicar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mediaPath, caption })
+          });
+          
+          const data = await res.json();
+          handleResponse(data);
         }
       } catch (error) {
         // Ocultar loading y mostrar error
-        document.getElementById('loading').style.display = 'none';
+        loading.style.display = 'none';
         showError('Error de conexión: ' + error.message);
       }
     });
     
+    function handleResponse(data) {
+      // Ocultar loading
+      loading.style.display = 'none';
+      
+      if (data.success) {
+        // Mostrar resultado exitoso
+        resultContent.innerHTML = `
+          <p><strong>Estado:</strong> Éxito</p>
+          <p><strong>Mensaje:</strong> ${data.message}</p>
+          <p><strong>Grupos alcanzados:</strong> ${data.sentCount} de ${data.totalGroups}</p>
+        `;
+        resultContainer.style.display = 'block';
+      } else {
+        // Mostrar error
+        showError(`Error: ${data.error}`);
+      }
+    }
+    
     function showError(message) {
-      const errorContent = document.getElementById('error-content');
       errorContent.textContent = message;
-      document.getElementById('error-container').style.display = 'block';
+      errorContainer.style.display = 'block';
     }
   </script>
 </body>
