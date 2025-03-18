@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { publishToAllGroups } = require('../publisher');
+const { publishToAllGroups } = require('./publisher');
 
 // Esta ruta POST se usará para publicar en todos los grupos
 router.post('/publicar', async (req, res) => {
