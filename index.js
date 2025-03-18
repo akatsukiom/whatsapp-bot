@@ -872,6 +872,14 @@ async function main() {
     // Limpiar sesiones duplicadas
     await manager.cleanupDuplicateSessions();
     
+
+    // Eliminar la carpeta de sesión si existe
+const sessionDir = path.join(__dirname, '.wwebjs_auth', 'cuenta_principal');
+if (fs.existsSync(sessionDir)) {
+  fs.rmSync(sessionDir, { recursive: true, force: true });
+  console.log('Carpeta de sesión eliminada forzadamente');
+}
+
     // Agregar solo una cuenta (reemplaza con tu número real)
     manager.addAccount('4962541655', 'cuenta_principal');
     
