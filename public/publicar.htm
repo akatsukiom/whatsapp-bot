@@ -2,47 +2,179 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Publicar en Grupos</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    label { display: block; margin-top: 10px; }
-    input, textarea { width: 100%; padding: 8px; margin-top: 5px; }
-    button { margin-top: 15px; padding: 10px 15px; }
-    #response { margin-top: 20px; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f7f7f7;
+    }
+    .container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    .card {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .header {
+      background-color: #075e54;
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .form-control {
+      margin-bottom: 15px;
+    }
+    .result-container {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      background-color: #f8f9fa;
+      border-left: 4px solid #28a745;
+      display: none;
+    }
+    .error-container {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      background-color: #f8d7da;
+      border-left: 4px solid #dc3545;
+      color: #721c24;
+      display: none;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      margin: 20px 0;
+    }
+    .spinner-border {
+      width: 3rem;
+      height: 3rem;
+    }
+    .back-link {
+      display: block;
+      margin-top: 20px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <h1>Publicar mensaje multimedia en todos los grupos</h1>
-  <form id="publishForm">
-    <label for="mediaPath">Ruta o URL de la imagen:</label>
-    <input type="text" id="mediaPath" name="mediaPath" required>
+  <div class="container">
+    <div class="header">
+      <h2><i class="bi bi-megaphone-fill me-2"></i>Publicar mensaje multimedia en grupos</h2>
+    </div>
+    
+    <div class="card">
+      <form id="publishForm">
+        <div class="mb-3">
+          <label for="mediaPath" class="form-label"><i class="bi bi-image me-2"></i>Ruta o URL de la imagen/video:</label>
+          <input type="text" class="form-control" id="mediaPath" name="mediaPath" required
+                 placeholder="Ej: https://ejemplo.com/imagen.jpg o /ruta/local/imagen.jpg">
+          <div class="form-text">Puede ser una URL completa o una ruta local relativa al servidor.</div>
+        </div>
 
-    <label for="caption">Texto del mensaje:</label>
-    <textarea id="caption" name="caption" rows="4" required></textarea>
+        <div class="mb-3">
+          <label for="caption" class="form-label"><i class="bi bi-chat-left-text me-2"></i>Texto del mensaje:</label>
+          <textarea id="caption" name="caption" class="form-control" rows="4" required
+                    placeholder="Escribe aquí el mensaje que acompañará a la imagen..."></textarea>
+        </div>
 
-    <button type="submit">Enviar a todos los grupos</button>
-  </form>
-  
-  <div id="response"></div>
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-send-fill me-2"></i>Enviar a todos los grupos
+        </button>
+      </form>
+      
+      <div class="loading" id="loading">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Enviando mensaje...</span>
+        </div>
+        <p class="mt-2">Enviando mensaje a los grupos...</p>
+      </div>
+      
+      <div class="result-container" id="result-container">
+        <h4><i class="bi bi-check-circle-fill me-2"></i>Mensaje enviado</h4>
+        <div id="result-content"></div>
+      </div>
+      
+      <div class="error-container" id="error-container">
+        <h4><i class="bi bi-exclamation-triangle-fill me-2"></i>Error</h4>
+        <div id="error-content"></div>
+      </div>
+    </div>
+    
+    <a href="/" class="back-link btn btn-outline-secondary">
+      <i class="bi bi-arrow-left me-2"></i>Volver al panel principal
+    </a>
+  </div>
   
   <script>
     document.getElementById('publishForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const mediaPath = document.getElementById('mediaPath').value;
-      const caption = document.getElementById('caption').value;
+      
+      // Obtener valores del formulario
+      const mediaPath = document.getElementById('mediaPath').value.trim();
+      const caption = document.getElementById('caption').value.trim();
+      
+      // Validación básica
+      if (!mediaPath) {
+        showError('Debes proporcionar una ruta o URL para el archivo multimedia');
+        return;
+      }
+      
+      // Mostrar loading
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('result-container').style.display = 'none';
+      document.getElementById('error-container').style.display = 'none';
       
       try {
+        // Enviar solicitud a la API
         const res = await fetch('/api/publicar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mediaPath, caption })
         });
+        
         const data = await res.json();
-        document.getElementById('response').innerText = JSON.stringify(data, null, 2);
+        
+        // Ocultar loading
+        document.getElementById('loading').style.display = 'none';
+        
+        if (data.success) {
+          // Mostrar resultado exitoso
+          const resultContent = document.getElementById('result-content');
+          resultContent.innerHTML = `
+            <p><strong>Estado:</strong> Éxito</p>
+            <p><strong>Mensaje:</strong> ${data.message}</p>
+            <p><strong>Grupos alcanzados:</strong> ${data.sentCount} de ${data.totalGroups}</p>
+          `;
+          document.getElementById('result-container').style.display = 'block';
+        } else {
+          // Mostrar error
+          showError(`Error: ${data.error}`);
+        }
       } catch (error) {
-        document.getElementById('response').innerText = 'Error: ' + error.message;
+        // Ocultar loading y mostrar error
+        document.getElementById('loading').style.display = 'none';
+        showError('Error de conexión: ' + error.message);
       }
     });
+    
+    function showError(message) {
+      const errorContent = document.getElementById('error-content');
+      errorContent.textContent = message;
+      document.getElementById('error-container').style.display = 'block';
+    }
   </script>
 </body>
 </html>

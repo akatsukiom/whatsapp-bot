@@ -1,3 +1,10 @@
+
+// index.js - Punto de entrada principal de la aplicación
+const express = require('express');
+const app = express();
+const path = require('path');
+const fs = require('fs');
+
 // index.js - Punto de entrada principal de la aplicación
 const path = require('path');
 const dotenv = require('dotenv');
@@ -14,17 +21,29 @@ const app = express();
 // Cargar variables de entorno
 dotenv.config();
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Montar la ruta de publicación
-const publicarRoute = require('./routes/publicar');
-app.use('/api', publicarRoute);
+// Incluir la configuración del servidor pasando la instancia de app
+const setupServer = require('./server');
+setupServer(app);
 
 // Iniciar el servidor Express
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
 
+// Configuración del Socket.IO
+const { Server } = require('socket.io');
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+// Hacer io disponible globalmente
+global.io = io;
 
 // Asegurar que las carpetas necesarias existen
 utils.ensureDirectories();
