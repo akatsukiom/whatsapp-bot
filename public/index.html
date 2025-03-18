@@ -143,6 +143,28 @@
     .action-buttons {
       margin-top: 10px;
     }
+    .buttons-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 10px;
+    }
+    .btn-action {
+      flex: 1;
+      text-align: center;
+      white-space: nowrap;
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 576px) {
+      .buttons-container {
+        flex-direction: column;
+      }
+      .btn-action {
+        margin-bottom: 5px;
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -450,6 +472,307 @@
     
     // Iniciar animación de progreso
     startProgressAnimation();
+
+    // Función para mostrar/ocultar mensaje de no conexiones
+    function toggleNoConnectionsMessage() {
+      if (Object.keys(accounts).length === 0) {
+        noConnectionsDiv.style.display = 'block';
+      } else {
+        noConnectionsDiv.style.display = 'none';
+      }
+    }
+    
+    // Función para renderizar una cuenta
+    function renderAccount(account) {
+      // Determinar el estado visual
+      let statusClass = '';
+      let statusText = '';
+      let statusBadgeClass = '';
+      let buttonDisabled = true;
+      
+      switch (account.status) {
+        case 'ready':
+          statusClass = 'status-ready';
+          statusText = 'Conectado';
+          statusBadgeClass = 'bg-success';
+          buttonDisabled = false;
+          break;
+        case 'authenticated':
+          statusClass = 'status-ready';
+          statusText = 'Autenticado';
+          statusBadgeClass = 'bg-success';
+          buttonDisabled = false;
+          break;
+        case 'waiting':
+          statusClass = 'status-waiting';
+          statusText = 'Esperando escaneo';
+          statusBadgeClass = 'bg-warning';
+          buttonDisabled = true;
+          break;
+        case 'initializing':
+          statusClass = 'status-waiting';
+          statusText = 'Inicializando';
+          statusBadgeClass = 'bg-warning';
+          buttonDisabled = true;
+          break;
+        case 'error':
+          statusClass = 'status-error';
+          statusText = 'Error';
+          statusBadgeClass = 'bg-danger';
+          buttonDisabled = true;
+          break;
+        case 'disconnected':
+          statusClass = 'status-error';
+          statusText = 'Desconectado';
+          statusBadgeClass = 'bg-secondary';
+          buttonDisabled = true;
+          break;
+        default:
+          statusClass = 'status-waiting';
+          statusText = account.status || 'Desconocido';
+          statusBadgeClass = 'bg-secondary';
+          buttonDisabled = true;
+      }
+      
+      // Buscar si ya existe un elemento para esta cuenta
+      let accountElement = document.getElementById('account-' + account.sessionName);
+      
+      if (!accountElement) {
+        // Crear nuevo elemento si no existe
+        accountElement = document.createElement('div');
+        accountElement.id = 'account-' + account.sessionName;
+        accountElement.className = 'col-md-6 mb-4';
+        
+        // Crear estructura HTML de la tarjeta
+        accountElement.innerHTML = `
+          <div class="qr-container ${account.active ? 'active' : ''}">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div class="phone-number">
+                ${account.phoneNumber || account.sessionName}
+                ${account.active ? '<span class="active-badge">ACTIVA</span>' : ''}
+              </div>
+              <span class="badge ${statusBadgeClass}">${statusText}</span>
+            </div>
+            
+            <div id="status-${account.sessionName}" class="mb-3">
+              <span class="status-indicator ${statusClass}"></span>
+              <span class="status-text">${account.detail || 'Sin detalles adicionales'}</span>
+            </div>
+            
+            <div id="qr-${account.sessionName}" class="mt-3">
+              ${account.qrData ? 
+                `<img src="${account.qrData}" alt="Código QR" class="img-fluid">` : 
+                account.status === 'ready' || account.status === 'authenticated' ? 
+                  `<p class="alert alert-success"><i class="bi bi-check-circle-fill me-2"></i>WhatsApp conectado correctamente</p>` :
+                  `<p class="text-center text-muted">Esperando información de conexión...</p>`
+              }
+            </div>
+            
+            <div class="buttons-container mt-3">
+              <button class="btn btn-warning btn-action refresh-qr-btn" data-session="${account.sessionName}">
+                <i class="bi bi-arrow-repeat me-1"></i> Regenerar QR
+              </button>
+              <button class="btn btn-danger btn-action logout-btn" data-session="${account.sessionName}" ${buttonDisabled ? 'disabled' : ''}>
+                <i class="bi bi-power me-1"></i> Cerrar sesión
+              </button>
+              <button class="btn btn-secondary btn-action delete-btn" data-session="${account.sessionName}">
+                <i class="bi bi-trash me-1"></i> Eliminar cuenta
+              </button>
+            </div>
+          </div>
+        `;
+        
+        accountsContainer.appendChild(accountElement);
+        
+        // Agregar eventos a los botones
+        const refreshQrBtn = accountElement.querySelector('.refresh-qr-btn');
+        refreshQrBtn.addEventListener('click', () => {
+          refreshQR(account.sessionName);
+        });
+        
+        const logoutBtn = accountElement.querySelector('.logout-btn');
+        logoutBtn.addEventListener('click', () => {
+          logoutAccount(account.sessionName);
+        });
+        
+        const deleteBtn = accountElement.querySelector('.delete-btn');
+        deleteBtn.addEventListener('click', () => {
+          deleteAccount(account.sessionName);
+        });
+      } else {
+        // Actualizar elemento existente
+        
+        // Actualizar el estado y detalle
+        const statusElement = accountElement.querySelector(`#status-${account.sessionName}`);
+        if (statusElement) {
+          statusElement.innerHTML = `
+            <span class="status-indicator ${statusClass}"></span>
+            <span class="status-text">${account.detail || 'Sin detalles adicionales'}</span>
+          `;
+        }
+        
+        // Actualizar el badge de estado
+        const badgeElement = accountElement.querySelector('.badge');
+        if (badgeElement) {
+          badgeElement.className = `badge ${statusBadgeClass}`;
+          badgeElement.textContent = statusText;
+        }
+        
+        // Actualizar el QR si se cambió
+        if (account.qrData) {
+          const qrElement = accountElement.querySelector(`#qr-${account.sessionName}`);
+          if (qrElement) {
+            qrElement.innerHTML = `<img src="${account.qrData}" alt="Código QR" class="img-fluid">`;
+          }
+        } else if (account.status === 'ready' || account.status === 'authenticated') {
+          const qrElement = accountElement.querySelector(`#qr-${account.sessionName}`);
+          if (qrElement) {
+            qrElement.innerHTML = `<p class="alert alert-success"><i class="bi bi-check-circle-fill me-2"></i>WhatsApp conectado correctamente</p>`;
+          }
+        }
+        
+        // Actualizar botón de cerrar sesión
+        const logoutBtn = accountElement.querySelector('.logout-btn');
+        if (logoutBtn) {
+          logoutBtn.disabled = buttonDisabled;
+        }
+        
+        // Actualizar si es activa o no
+        const container = accountElement.querySelector('.qr-container');
+        if (account.active) {
+          container.classList.add('active');
+          // Agregar badge si no existe
+          const phoneNumberEl = accountElement.querySelector('.phone-number');
+          if (!phoneNumberEl.querySelector('.active-badge')) {
+            phoneNumberEl.innerHTML = `
+              ${account.phoneNumber || account.sessionName}
+              <span class="active-badge">ACTIVA</span>
+            `;
+          }
+        } else {
+          container.classList.remove('active');
+          // Quitar badge si existe
+          const phoneNumberEl = accountElement.querySelector('.phone-number');
+          const badge = phoneNumberEl.querySelector('.active-badge');
+          if (badge) {
+            badge.remove();
+          }
+          phoneNumberEl.textContent = account.phoneNumber || account.sessionName;
+        }
+      }
+      
+      toggleNoConnectionsMessage();
+    }
+    
+    // Función para cerrar sesión de una cuenta
+    function logoutAccount(sessionName) {
+      if (confirm('¿Estás seguro de cerrar la sesión de esta cuenta? Se eliminarán los datos de sesión y será necesario escanear un nuevo código QR.')) {
+        const accountElement = document.getElementById('account-' + sessionName);
+        if (accountElement) {
+          const logoutBtn = accountElement.querySelector('.logout-btn');
+          if (logoutBtn) {
+            logoutBtn.disabled = true;
+            logoutBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Cerrando...';
+          }
+        }
+        
+        socket.emit('logoutAccount', sessionName);
+        addLogEntry(`Solicitando cierre de sesión para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'warning');
+      }
+    }
+    
+    // Función para eliminar una cuenta
+    function deleteAccount(sessionName) {
+      if (confirm('¿Estás seguro de eliminar esta cuenta? Se eliminarán todos los datos asociados.')) {
+        const accountElement = document.getElementById('account-' + sessionName);
+        if (accountElement) {
+          const deleteBtn = accountElement.querySelector('.delete-btn');
+          if (deleteBtn) {
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Eliminando...';
+          }
+        }
+        
+        socket.emit('removeAccount', sessionName);
+        addLogEntry(`Solicitando eliminar cuenta ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'warning');
+      }
+    }
+    
+    // Función para refrescar código QR
+    function refreshQR(sessionName) {
+      // Verificar si ya está en proceso
+      if (qrRefreshInProgress[sessionName]) {
+        addLogEntry(`Ya hay una solicitud de regeneración de QR en proceso para ${accounts[sessionName]?.phoneNumber || sessionName}`, 'warning');
+        return;
+      }
+      
+      if (confirm('¿Estás seguro de regenerar el código QR? Esto cerrará la sesión actual si está activa.')) {
+        const accountElement = document.getElementById('account-' + sessionName);
+        if (accountElement) {
+          const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
+          if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refrescando...';
+          }
+          
+          const qrElement = accountElement.querySelector(`#qr-${sessionName}`);
+          if (qrElement) {
+            qrElement.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div><p>Regenerando código QR...</p>';
+          }
+        }
+        
+        // Marcar como en proceso
+        qrRefreshInProgress[sessionName] = true;
+        
+       // Establecer un timeout para restablecer el estado después de 30 segundos
+        setTimeout(() => {
+          if (qrRefreshInProgress[sessionName]) {
+            qrRefreshInProgress[sessionName] = false;
+            
+            // Restablecer botón si aún está en proceso
+            const accountElement = document.getElementById('account-' + sessionName);
+            if (accountElement) {
+              const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
+              if (refreshBtn && refreshBtn.disabled) {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Regenerar QR';
+                
+                addLogEntry(`Timeout al regenerar QR para ${accounts[sessionName]?.phoneNumber || sessionName}`, 'warning');
+              }
+            }
+          }
+        }, 30000);
+        
+        socket.emit('refreshQR', sessionName);
+        addLogEntry(`Solicitando regeneración de QR para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'info');
+      }
+    }
+    
+    // Agregar nueva cuenta
+    function addNewAccount() {
+      const phoneNumber = phoneNumberInput.value.trim();
+      const sessionName = sessionNameInput.value.trim() || '';
+      
+      if (!phoneNumber) {
+        alert('Por favor ingresa un número de teléfono válido');
+        return;
+      }
+      
+      // Cerrar modal
+      addAccountModal.hide();
+      
+      // Enviar solicitud al servidor
+      socket.emit('addAccount', {
+        phoneNumber,
+        sessionName: sessionName || `cuenta_${Date.now()}`
+      });
+      
+      addLogEntry(`Solicitando agregar nueva cuenta: ${phoneNumber}...`, 'info');
+      
+      // Limpiar formulario
+      phoneNumberInput.value = '';
+      sessionNameInput.value = '';
+    }
     
     // Eventos Socket.IO
     socket.on('connect', () => {
@@ -536,6 +859,7 @@
     // Recibir información del sistema
     socket.on('systemInfo', (data) => {
       totalAccountsEl.textContent = data.accounts;
+      connectedAccountsEl.textContent = data.connectedAccounts;
       activeAccountEl.textContent = data.activeAccount;
       
       // Actualizar hora de última actualización
@@ -567,106 +891,32 @@
       if (!accounts[data.sessionName]) {
         accounts[data.sessionName] = {
           phoneNumber: data.phoneNumber,
+          sessionName: data.sessionName,
           status: 'waiting',
-          active: false
+          detail: 'Esperando escaneo de QR',
+          active: false,
+          qrData: data.qrDataUrl
         };
-      }
-      
-      // Buscar si ya existe un contenedor para esta cuenta
-      let accountElement = document.getElementById('account-' + data.sessionName);
-      
-      if (!accountElement) {
-        // Crear nuevo contenedor si no existe
-        accountElement = document.createElement('div');
-        accountElement.id = 'account-' + data.sessionName;
-        accountElement.className = 'col-md-6 mb-4';
-        accountElement.innerHTML = `
-          <div class="qr-container ${accounts[data.sessionName].active ? 'active' : ''}">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <div class="phone-number">
-                ${data.phoneNumber || data.sessionName}
-                ${accounts[data.sessionName].active ? '<span class="active-badge">ACTIVA</span>' : ''}
-              </div>
-              <div class="btn-group">
-                <button class="btn btn-sm btn-warning refresh-qr-btn" data-session="${data.sessionName}">
-                  <i class="bi bi-arrow-repeat"></i> Refrescar QR
-                </button>
-                <button class="btn btn-sm btn-danger logout-btn" data-session="${data.sessionName}" disabled>
-                  <i class="bi bi-power"></i> Cerrar sesión
-                </button>
-              </div>
-            </div>
-            <div id="status-${data.sessionName}" class="mb-3">
-              <span class="status-indicator status-waiting"></span>
-              <span class="status-text">Esperando escaneo...</span>
-            </div>
-            <div id="qr-${data.sessionName}" class="mt-3">
-              <img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">
-            </div>
-          </div>
-        `;
-        accountsContainer.appendChild(accountElement);
-        
-        // Agregar eventos a los botones
-        const refreshQrBtn = accountElement.querySelector('.refresh-qr-btn');
-        refreshQrBtn.addEventListener('click', () => {
-          refreshQR(data.sessionName);
-        });
-        
-        const logoutBtn = accountElement.querySelector('.logout-btn');
-        logoutBtn.addEventListener('click', () => {
-          logoutAccount(data.sessionName);
-        });
       } else {
-        // Actualizar QR existente solo si está en modo espera o error
-        if (accounts[data.sessionName].status !== 'ready' && 
-            accounts[data.sessionName].status !== 'authenticated') {
-          const qrElement = document.getElementById('qr-' + data.sessionName);
-          if (qrElement) {
-            qrElement.innerHTML = `<img src="${data.qrDataUrl}" alt="Código QR" class="img-fluid">`;
-          }
-          
-          // Actualizar estado
-          const statusElement = document.getElementById('status-' + data.sessionName);
-          if (statusElement) {
-            statusElement.innerHTML = `
-              <span class="status-indicator status-waiting"></span>
-              <span class="status-text">Esperando escaneo...</span>
-            `;
-          }
-          
-          // Restablecer el botón de refrescar QR
-          const refreshQrBtn = accountElement.querySelector('.refresh-qr-btn');
-          if (refreshQrBtn && qrRefreshInProgress[data.sessionName]) {
-            refreshQrBtn.disabled = false;
-            refreshQrBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refrescar QR';
-            qrRefreshInProgress[data.sessionName] = false;
-          }
-        }
-        
-        // Actualizar badge de activo
-        const container = accountElement.querySelector('.qr-container');
-        const phoneNumberEl = accountElement.querySelector('.phone-number');
-        
-        if (accounts[data.sessionName].active) {
-          container.classList.add('active');
-          if (!phoneNumberEl.querySelector('.active-badge')) {
-            phoneNumberEl.innerHTML = `
-              ${data.phoneNumber || data.sessionName}
-              <span class="active-badge">ACTIVA</span>
-            `;
-          }
-        } else {
-          container.classList.remove('active');
-          const badge = phoneNumberEl.querySelector('.active-badge');
-          if (badge) {
-            badge.remove();
-          }
-          phoneNumberEl.textContent = data.phoneNumber || data.sessionName;
-        }
+        accounts[data.sessionName].qrData = data.qrDataUrl;
+        accounts[data.sessionName].status = 'waiting';
+        accounts[data.sessionName].detail = 'Esperando escaneo de QR';
       }
       
+      // Renderizar la cuenta
+      renderAccount(accounts[data.sessionName]);
       updateConnectionStats();
+      
+      // Restablecer el botón de refrescar QR
+      qrRefreshInProgress[data.sessionName] = false;
+      const accountElement = document.getElementById('account-' + data.sessionName);
+      if (accountElement) {
+        const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Regenerar QR';
+        }
+      }
     });
     
     // Manejar actualizaciones de estado
@@ -685,6 +935,7 @@
       if (!accounts[data.sessionName]) {
         accounts[data.sessionName] = {
           phoneNumber: data.phoneNumber,
+          sessionName: data.sessionName,
           status: data.status,
           detail: data.detail || '',
           active: data.active || false,
@@ -716,141 +967,12 @@
         return;
       }
       
-      // Buscar si ya existe un contenedor para esta cuenta
-      let accountElement = document.getElementById('account-' + data.sessionName);
-      
-      if (!accountElement && (data.status === 'ready' || data.status === 'authenticated' || data.status === 'initializing' || data.status === 'error')) {
-        // Crear nuevo contenedor si no existe
-        accountElement = document.createElement('div');
-        accountElement.id = 'account-' + data.sessionName;
-        accountElement.className = 'col-md-6 mb-4';
-        accountElement.innerHTML = `
-          <div class="qr-container ${data.active ? 'active' : ''}">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-          <div class="phone-number">
-                ${data.phoneNumber || data.sessionName}
-                ${data.active ? '<span class="active-badge">ACTIVA</span>' : ''}
-              </div>
-              <div class="btn-group">
-                <button class="btn btn-sm btn-warning refresh-qr-btn" data-session="${data.sessionName}">
-                  <i class="bi bi-arrow-repeat"></i> Refrescar QR
-                </button>
-                <button class="btn btn-sm btn-danger logout-btn" data-session="${data.sessionName}" ${data.status !== 'ready' && data.status !== 'authenticated' ? 'disabled' : ''}>
-                  <i class="bi bi-power"></i> Cerrar sesión
-                </button>
-              </div>
-            </div>
-            <div id="status-${data.sessionName}" class="mb-3">
-              <span class="status-indicator status-waiting"></span>
-              <span class="status-text">Inicializando...</span>
-            </div>
-            <div id="qr-${data.sessionName}" class="mt-3">
-              <p>Esperando información de conexión...</p>
-            </div>
-          </div>
-        `;
-        accountsContainer.appendChild(accountElement);
-        
-        // Agregar eventos a los botones
-        const refreshQrBtn = accountElement.querySelector('.refresh-qr-btn');
-        refreshQrBtn.addEventListener('click', () => {
-          refreshQR(data.sessionName);
-        });
-        
-        const logoutBtn = accountElement.querySelector('.logout-btn');
-        logoutBtn.addEventListener('click', () => {
-          logoutAccount(data.sessionName);
-        });
-      }
-      
-      // Actualizar el estado si existe el elemento
-      if (accountElement) {
-        const statusElement = document.getElementById('status-' + data.sessionName);
-        const container = accountElement.querySelector('.qr-container');
-        const phoneNumberEl = accountElement.querySelector('.phone-number');
-        const logoutBtn = accountElement.querySelector('.logout-btn');
-        
-        if (statusElement) {
-          let statusClass = 'status-waiting';
-          let statusText = 'Desconocido';
-          
-          switch (data.status) {
-            case 'ready':
-              statusClass = 'status-ready';
-              statusText = 'Conectado';
-              logoutBtn.disabled = false;
-              // Ocultar QR cuando esté listo
-              const qrElement = document.getElementById('qr-' + data.sessionName);
-              if (qrElement) {
-                qrElement.innerHTML = '<p class="alert alert-success"><i class="bi bi-check-circle-fill me-2"></i>WhatsApp conectado correctamente</p>';
-              }
-              break;
-            case 'authenticated':
-              statusClass = 'status-ready';
-              statusText = 'Autenticado';
-              logoutBtn.disabled = false;
-              // También ocultar QR cuando está autenticado
-              const qrElementAuth = document.getElementById('qr-' + data.sessionName);
-              if (qrElementAuth) {
-                qrElementAuth.innerHTML = '<p class="alert alert-success"><i class="bi bi-check-circle-fill me-2"></i>WhatsApp autenticado correctamente</p>';
-              }
-              break;
-            case 'initializing':
-              statusClass = 'status-waiting';
-              statusText = 'Inicializando';
-              logoutBtn.disabled = true;
-              break;
-            case 'error':
-              statusClass = 'status-error';
-              statusText = 'Error: ' + (data.detail || 'desconocido');
-              logoutBtn.disabled = true;
-              break;
-            case 'disconnected':
-              statusClass = 'status-error';
-              statusText = 'Desconectado: ' + (data.detail || 'razón desconocida');
-              logoutBtn.disabled = true;
-              break;
-            default:
-              statusClass = 'status-waiting';
-              statusText = data.status;
-              logoutBtn.disabled = true;
-          }
-          
-          statusElement.innerHTML = `
-            <span class="status-indicator ${statusClass}"></span>
-            <span class="status-text">${statusText}</span>
-          `;
-          
-          // Mostrar detalles adicionales si hay
-          if (data.detail && data.detail.trim() !== '') {
-            statusElement.innerHTML += `<br><small class="text-muted">${data.detail}</small>`;
-          }
-        }
-        
-        // Actualizar si es activa
-        if (data.active) {
-          container.classList.add('active');
-          if (!phoneNumberEl.querySelector('.active-badge')) {
-            phoneNumberEl.innerHTML = `
-              ${data.phoneNumber || data.sessionName}
-              <span class="active-badge">ACTIVA</span>
-            `;
-          }
-        } else {
-          container.classList.remove('active');
-          const badge = phoneNumberEl.querySelector('.active-badge');
-          if (badge) {
-            badge.remove();
-          }
-          phoneNumberEl.textContent = data.phoneNumber || data.sessionName;
-        }
-      }
-      
-      // Actualizar estadísticas de conexión
+      // Renderizar la cuenta
+      renderAccount(accounts[data.sessionName]);
       updateConnectionStats();
       
-      // Sólo agregar al log si no es un sistema y ha cambiado de estado
-      if (data.sessionName !== 'sistema' && accounts[data.sessionName].lastStatus !== data.status) {
+      // Sólo agregar al log si ha cambiado de estado
+      if (data.status !== accounts[data.sessionName].lastStatus) {
         accounts[data.sessionName].lastStatus = data.status;
         
         let logType = 'info';
@@ -878,35 +1000,10 @@
         if (accounts[data.sessionName]) {
           accounts[data.sessionName].status = 'disconnected';
           accounts[data.sessionName].active = false;
+          accounts[data.sessionName].detail = 'Cerrado por usuario';
           
-          // Actualizar interfaz
-          const accountElement = document.getElementById('account-' + data.sessionName);
-          if (accountElement) {
-            const statusElement = document.getElementById('status-' + data.sessionName);
-            if (statusElement) {
-              statusElement.innerHTML = `
-                <span class="status-indicator status-error"></span>
-                <span class="status-text">Desconectado: Cerrado por usuario</span>
-              `;
-            }
-            
-            // Actualizar botones
-            const logoutBtn = accountElement.querySelector('.logout-btn');
-            if (logoutBtn) {
-              logoutBtn.disabled = true;
-              logoutBtn.innerHTML = '<i class="bi bi-power"></i> Cerrar sesión';
-            }
-            
-            // Quitar badge de activo
-            const container = accountElement.querySelector('.qr-container');
-            const phoneNumberEl = accountElement.querySelector('.phone-number');
-            container.classList.remove('active');
-            const badge = phoneNumberEl.querySelector('.active-badge');
-            if (badge) {
-              badge.remove();
-            }
-            phoneNumberEl.textContent = accounts[data.sessionName].phoneNumber || data.sessionName;
-          }
+          // Renderizar la cuenta actualizada
+          renderAccount(accounts[data.sessionName]);
         }
         
         // Solicitar actualización de estado
@@ -921,7 +1018,41 @@
           const logoutBtn = accountElement.querySelector('.logout-btn');
           if (logoutBtn) {
             logoutBtn.disabled = false;
-            logoutBtn.innerHTML = '<i class="bi bi-power"></i> Cerrar sesión';
+            logoutBtn.innerHTML = '<i class="bi bi-power me-1"></i> Cerrar sesión';
+          }
+        }
+      }
+    });
+    
+    // Manejar respuesta de eliminación de cuenta
+    socket.on('accountRemoved', (data) => {
+      if (data.success) {
+        addLogEntry(`Cuenta ${accounts[data.sessionName]?.phoneNumber || data.sessionName} eliminada correctamente`, 'success');
+        
+        // Eliminar la cuenta de nuestro registro
+        if (accounts[data.sessionName]) {
+          delete accounts[data.sessionName];
+        }
+        
+        // Eliminar el elemento del DOM
+        const accountElement = document.getElementById('account-' + data.sessionName);
+        if (accountElement) {
+          accountElement.remove();
+        }
+        
+        // Actualizar estadísticas
+        updateConnectionStats();
+        toggleNoConnectionsMessage();
+      } else {
+        addLogEntry(`Error al eliminar cuenta: ${data.error || 'Error desconocido'}`, 'error');
+        
+        // Restablecer el botón
+        const accountElement = document.getElementById('account-' + data.sessionName);
+        if (accountElement) {
+          const deleteBtn = accountElement.querySelector('.delete-btn');
+          if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.innerHTML = '<i class="bi bi-trash me-1"></i> Eliminar cuenta';
           }
         }
       }
@@ -940,7 +1071,7 @@
         const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
         if (refreshBtn) {
           refreshBtn.disabled = false;
-          refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refrescar QR';
+          refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Regenerar QR';
           qrRefreshInProgress[data.sessionName] = false;
         }
         
@@ -964,102 +1095,18 @@
       addLogEntry(`Error del servidor: ${message}`, 'error');
     });
     
-    // Funciones auxiliares
-    
-    // Cerrar sesión de una cuenta
-    function logoutAccount(sessionName) {
-      if (confirm('¿Estás seguro de cerrar la sesión de esta cuenta? Se eliminarán los datos de sesión y será necesario escanear un nuevo código QR.')) {
-        const accountElement = document.getElementById('account-' + sessionName);
-        if (accountElement) {
-          const logoutBtn = accountElement.querySelector('.logout-btn');
-          if (logoutBtn) {
-            logoutBtn.disabled = true;
-            logoutBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Cerrando...';
-          }
-        }
-        
-        socket.emit('logoutAccount', sessionName);
-        addLogEntry(`Solicitando cierre de sesión para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'warning');
+    // Respuesta a la adición de cuenta
+    socket.on('accountAdded', (data) => {
+      if (data.success) {
+        addLogEntry(`Cuenta agregada correctamente: ${data.phoneNumber}`, 'success');
+        socket.emit('requestStatus');
+        socket.emit('requestSystemInfo');
+      } else {
+        addLogEntry(`Error al agregar cuenta: ${data.error || 'Error desconocido'}`, 'error');
       }
-    }
+    });
     
-    // Refrescar código QR
-    function refreshQR(sessionName) {
-      // Verificar si ya está en proceso
-      if (qrRefreshInProgress[sessionName]) {
-        addLogEntry(`Ya hay una solicitud de regeneración de QR en proceso para ${accounts[sessionName]?.phoneNumber || sessionName}`, 'warning');
-        return;
-      }
-      
-      if (confirm('¿Estás seguro de regenerar el código QR? Esto cerrará la sesión actual si está activa.')) {
-        const accountElement = document.getElementById('account-' + sessionName);
-        if (accountElement) {
-          const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
-          if (refreshBtn) {
-            refreshBtn.disabled = true;
-            refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refrescando...';
-          }
-          
-          const qrElement = document.getElementById('qr-' + sessionName);
-          if (qrElement) {
-            qrElement.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div><p>Regenerando código QR...</p>';
-          }
-        }
-        
-        // Marcar como en proceso
-        qrRefreshInProgress[sessionName] = true;
-        
-        // Establecer un timeout para restablecer el estado después de 30 segundos
-        setTimeout(() => {
-          if (qrRefreshInProgress[sessionName]) {
-            qrRefreshInProgress[sessionName] = false;
-            
-            // Restablecer botón si aún está en proceso
-            const accountElement = document.getElementById('account-' + sessionName);
-            if (accountElement) {
-              const refreshBtn = accountElement.querySelector('.refresh-qr-btn');
-              if (refreshBtn && refreshBtn.disabled) {
-                refreshBtn.disabled = false;
-                refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refrescar QR';
-                
-                addLogEntry(`Timeout al regenerar QR para ${accounts[sessionName]?.phoneNumber || sessionName}`, 'warning');
-              }
-            }
-          }
-        }, 30000);
-        
-        socket.emit('refreshQR', sessionName);
-        addLogEntry(`Solicitando regeneración de QR para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'info');
-      }
-    }
-    
-    // Agregar cuenta nueva
-    function addNewAccount() {
-      const phoneNumber = phoneNumberInput.value.trim();
-      const sessionName = sessionNameInput.value.trim() || '';
-      
-      if (!phoneNumber) {
-        alert('Por favor ingresa un número de teléfono válido');
-        return;
-      }
-      
-      // Cerrar modal
-      addAccountModal.hide();
-      
-      // Enviar solicitud al servidor
-      socket.emit('addAccount', {
-        phoneNumber,
-        sessionName: sessionName || `cuenta_${Date.now()}`
-      });
-      
-      addLogEntry(`Solicitando agregar nueva cuenta: ${phoneNumber}...`, 'info');
-      
-      // Limpiar formulario
-      phoneNumberInput.value = '';
-      sessionNameInput.value = '';
-    }
-    
-    // Eventos de botones
+    // Asociar eventos a botones
     refreshStatsBtn.addEventListener('click', () => {
       socket.emit('requestStatus');
       socket.emit('requestSystemInfo');
@@ -1090,17 +1137,6 @@
       if (e.key === 'Enter') {
         e.preventDefault();
         addNewAccount();
-      }
-    });
-    
-    // Respuesta a la adición de cuenta
-    socket.on('accountAdded', (data) => {
-      if (data.success) {
-        addLogEntry(`Cuenta agregada correctamente: ${data.phoneNumber}`, 'success');
-        socket.emit('requestStatus');
-        socket.emit('requestSystemInfo');
-      } else {
-        addLogEntry(`Error al agregar cuenta: ${data.error || 'Error desconocido'}`, 'error');
       }
     });
     

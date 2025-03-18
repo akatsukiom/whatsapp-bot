@@ -324,6 +324,56 @@ function setupServer() {
       }
     });
 
+    // Eliminar cuenta completamente
+    socket.on('removeAccount', async (sessionName) => {
+      try {
+        console.log(`Solicitud recibida para eliminar cuenta: ${sessionName}`);
+        
+        if (global.whatsappManager) {
+          // Usar el método existente para eliminar la cuenta
+          const result = await global.whatsappManager.removeAccount(sessionName);
+          
+          if (result) {
+            console.log(`Cuenta ${sessionName} eliminada correctamente`);
+            socket.emit('accountRemoved', { 
+              sessionName, 
+              success: true 
+            });
+            
+            // Notificar a todos los clientes para que actualicen su estado
+            io.emit('systemInfo', {
+              accounts: global.whatsappManager.accounts.length,
+              connectedAccounts: global.whatsappManager.accounts.filter(a => 
+                a.status === 'ready' || a.status === 'authenticated'
+              ).length,
+              activeAccount: global.whatsappManager.accounts[global.whatsappManager.activeAccountIndex]?.phoneNumber || '-'
+            });
+          } else {
+            console.error(`Error al eliminar cuenta ${sessionName}: No se encontró la cuenta o hubo un problema interno`);
+            socket.emit('accountRemoved', { 
+              sessionName, 
+              success: false, 
+              error: 'No se encontró la cuenta o hubo un problema al eliminarla' 
+            });
+          }
+        } else {
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('accountRemoved', { 
+            sessionName, 
+            success: false, 
+            error: 'Gestor de WhatsApp no inicializado' 
+          });
+        }
+      } catch (err) {
+        console.error('Error al procesar la solicitud de eliminación de cuenta:', err);
+        socket.emit('accountRemoved', { 
+          sessionName, 
+          success: false, 
+          error: 'Error interno del servidor: ' + err.message 
+        });
+      }
+    });
+
     // Solicitar regeneración del código QR
     socket.on('refreshQR', (sessionName) => {
       try {
@@ -720,7 +770,7 @@ function setupServer() {
       socket.emit('heartbeat', { timestamp: Date.now() });
     }, 5000);
     
- // Limpiar intervalos al desconectar
+    // Limpiar intervalos al desconectar
     socket.on('disconnect', () => {
       console.log('Cliente web desconectado');
       clearInterval(heartbeatInterval);
