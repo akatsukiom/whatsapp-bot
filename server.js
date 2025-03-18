@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 // Incluir la ruta de publicación
-const publicarRoute = require('./modules/routes/publicar');
+const publicarRoute = require('./routes/publicar');
 app.use('/api', publicarRoute);
 
 // Cargar variables de entorno
