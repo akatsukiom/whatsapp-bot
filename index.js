@@ -7,10 +7,21 @@ const qrcode = require('qrcode');
 const logger = require('./modules/utils/logger');
 const utils = require('./modules/utils/utils');
 const publicarRoute = require('./routes/publicar');
-app.use('/api', publicarRoute);
+
 
 // Cargar variables de entorno
 dotenv.config();
+
+// Montar la ruta de publicación
+const publicarRoute = require('./routes/publicar');
+app.use('/api', publicarRoute);
+
+// Iniciar el servidor Express
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en el puerto ${PORT}`);
+});
+
 
 // Asegurar que las carpetas necesarias existen
 utils.ensureDirectories();
