@@ -1,4 +1,4 @@
-// templates/admin-template.js - Corregido
+// templates/admin-template.js - Versión corregida
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
@@ -12,81 +12,431 @@ function createAdminHtml() {
   <title>WhatsApp Bot - Panel de Administración</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --primary-color: #25D366;
+      --secondary-color: #128C7E;
+      --dark-color: #075E54;
+      --light-color: #DCF8C6;
+      --bg-color: #f6f6f6;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --text-secondary: #707070;
+    }
+    
     body { 
-      padding: 20px;
-      background-color: #f7f7f7;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 0;
+      background-color: var(--bg-color);
+      font-family: 'Poppins', sans-serif;
+      color: var(--text-color);
     }
-    .admin-panel {
-      background-color: white;
-      border-radius: 10px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    
+    .app-container {
+      max-width: 1200px;
+      margin: 0 auto;
       padding: 20px;
-      margin-bottom: 20px;
     }
-    .header-container {
-      background-color: #075e54;
+    
+    .app-header {
+      background-color: var(--dark-color);
       color: white;
-      padding: 15px 20px;
-      border-radius: 10px;
+      border-radius: 15px;
       margin-bottom: 30px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
     }
+    
+    .app-header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 200px;
+      height: 100%;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.1));
+      transform: skewX(-30deg);
+    }
+    
+    .admin-panel {
+      background-color: var(--card-bg);
+      border-radius: 15px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+      padding: 25px;
+      margin-bottom: 30px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .admin-panel h3 {
+      color: var(--dark-color);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+    }
+    
+    .admin-panel h3 i {
+      margin-right: 10px;
+      font-size: 1.5rem;
+    }
+    
     .loading-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(255, 255, 255, 0.8);
+      background-color: rgba(255, 255, 255, 0.9);
       display: flex;
       justify-content: center;
       align-items: center;
       z-index: 1000;
+      flex-direction: column;
       display: none;
     }
+    
+    .loader {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 6px solid rgba(37, 211, 102, 0.1);
+      border-top-color: var(--primary-color);
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
     .toast-container {
       position: fixed;
       top: 20px;
       right: 20px;
       z-index: 1100;
     }
-    /* Estilos para el Console Log y Chat */
-    #consoleLog, #botChat {
-      height: 250px;
-      overflow-y: auto;
-      border: 1px solid #ccc;
-      padding: 10px;
+    
+    .console-container, .chat-container {
+      border-radius: 10px;
+      border: 1px solid #eaeaea;
+      padding: 0;
       background: #f8f9fa;
+      height: 300px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
-    .btn-action-group {
-      margin-bottom: 15px;
+    
+    .console-header, .chat-header {
+      background-color: var(--dark-color);
+      color: white;
+      padding: 10px 15px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .console-header i, .chat-header i {
+      margin-right: 10px;
+    }
+    
+    #consoleLog, #botChat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      background-color: #f8f9fa;
+    }
+    
+    #botChat {
+      font-family: 'Poppins', sans-serif;
+    }
+    
+    .console-entry {
+      margin-bottom: 8px;
+      border-left: 3px solid #ccc;
+      padding-left: 10px;
+    }
+    
+    .chat-message {
+      margin-bottom: 12px;
+      max-width: 80%;
+      padding: 10px 15px;
+      border-radius: 15px;
+      position: relative;
+    }
+    
+    .chat-message.user-message {
+      background-color: var(--light-color);
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .chat-message.bot-message {
+      background-color: white;
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+    
+    .chat-sender {
+      font-weight: 600;
+      color: var(--dark-color);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    
+    .chat-input-container {
+      padding: 10px;
+      border-top: 1px solid #eaeaea;
+      display: flex;
+      background-color: white;
+    }
+    
+    .chat-input-container input {
+      flex: 1;
+      border-radius: 20px;
+      border: 1px solid #eaeaea;
+      padding: 8px 15px;
+      outline: none;
+    }
+    
+    .chat-input-container button {
+      margin-left: 10px;
+      border-radius: 50%;
+      width: 38px;
+      height: 38px;
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    
+    .chat-input-container button:hover {
+      background-color: var(--secondary-color);
+      transform: scale(1.05);
+    }
+    
+   .btn-action-group {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .btn-group {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .btn-primary, .btn-success, .btn-info, .btn-warning {
+      border-radius: 30px;
+      padding: 8px 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+      font-weight: 500;
+      border: none;
+    }
+
+  .btn-primary {
+      background-color: #4361ee;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background-color: #3a56d4;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(67, 97, 238, 0.3);
+    }
+    
+    .btn-success {
+      background-color: var(--primary-color);
+      color: white;
+    }
+    
+    .btn-success:hover {
+      background-color: var(--secondary-color);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(37, 211, 102, 0.3);
+    }
+    
+    .btn-info {
+      background-color: #3498db;
+      color: white;
+    }
+    
+    .btn-info:hover {
+      background-color: #2980b9;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(52, 152, 219, 0.3);
+    }
+    
+    .table {
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+    }
+    
+    .table thead {
+      background-color: var(--dark-color);
+      color: white;
+    }
+    
+    .table th {
+      font-weight: 500;
+      padding: 12px 15px;
+      border: none;
+    }
+    
+    .table td {
+      padding: 12px 15px;
+      vertical-align: middle;
+      border-color: #f2f2f2;
+    }
+    
+    .table tbody tr {
+      transition: all 0.3s ease;
+    }
+    
+    .table tbody tr:hover {
+      background-color: #f8f9fa;
+    }
+    
+    .table-responsive {
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    
+    .table .btn-sm {
+      border-radius: 30px;
+      padding: 5px 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      transition: all 0.3s ease;
+      margin-right: 5px;
+    }
+    
+    .form-control, .form-select {
+      border-radius: 30px;
+      padding: 10px 15px;
+      border: 1px solid #eaeaea;
+      font-size: 15px;
+      transition: all 0.3s ease;
+    }
+    
+    .form-control:focus, .form-select:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.2);
+    }
+    
+    textarea.form-control {
+      border-radius: 15px;
+      padding: 15px;
+    }
+    
+    .form-label {
+      font-weight: 500;
+      color: var(--dark-color);
+      margin-bottom: 8px;
+    }
+    
+    .form-text {
+      color: var(--text-secondary);
+    }
+    
+    .form-check-input:checked {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+    
+    .modal-content {
+      border-radius: 15px;
+      border: none;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+    
+    .modal-header {
+      border-radius: 15px 15px 0 0;
+      background-color: var(--dark-color);
+      color: white;
+      border-bottom: none;
+    }
+    
+    .modal-body {
+      padding: 25px;
+    }
+    
+    .modal-footer {
+      border-top: none;
+      padding: 15px 25px 25px;
+    }
+    
+    /* Animaciones */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .animate-fade-in {
+      animation: fadeIn 0.5s ease forwards;
+    }
+    
+    /* Efectos de hover en botones de acción */
+    .edit-btn:hover {
+      background-color: #ffc107;
+      color: #000;
+    }
+    
+    .delete-btn:hover {
+      background-color: #dc3545;
+      color: #fff;
+    }
+    
+    .quick-btn:hover {
+      background-color: #0dcaf0;
+      color: #fff;
     }
   </style>
 </head>
 <body>
   <!-- Overlay de carga -->
   <div id="loadingOverlay" class="loading-overlay">
-    <div class="spinner-border text-success" role="status">
-      <span class="visually-hidden">Cargando...</span>
-    </div>
+    <div class="loader"></div>
+    <p>Procesando solicitud...</p>
   </div>
 
   <!-- Contenedor de notificaciones -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <div class="container">
+  <div class="app-container">
     <!-- Encabezado -->
-    <div class="header-container">
-      <h1 class="text-center mb-0">
-        <i class="bi bi-whatsapp me-2"></i>Panel de Administración
-      </h1>
+    <div class="app-header animate-fade-in">
+      <div class="d-flex justify-content-between align-items-center">
+        <h1 class="mb-0">
+          <i class="bi bi-whatsapp me-2"></i>Panel de Administración
+        </h1>
+        <a href="/" class="btn btn-outline-light btn-sm">
+          <i class="bi bi-arrow-left me-1"></i> Volver al Dashboard
+        </a>
+      </div>
     </div>
     
     <!-- Formulario para agregar nueva respuesta -->
-    <div class="admin-panel">
-      <h3><i class="bi bi-plus-circle me-2"></i>Agregar nueva respuesta</h3>
+    <div class="admin-panel animate-fade-in" style="animation-delay: 0.1s">
+      <h3><i class="bi bi-plus-circle"></i>Agregar nueva respuesta</h3>
       <form id="addResponseForm">
         <div class="mb-3">
           <label for="trigger" class="form-label">Cuando el usuario escriba:</label>
@@ -97,50 +447,64 @@ function createAdminHtml() {
           <textarea class="form-control" id="response" rows="3" placeholder="Escribe la respuesta que dará el bot..." required></textarea>
         </div>
         <button type="submit" class="btn btn-success">
-          <i class="bi bi-save me-2"></i>Guardar respuesta
+          <i class="bi bi-save"></i> Guardar respuesta
         </button>
       </form>
     </div>
     
     <!-- Paneles en línea: Console Log y Mensajería en Tiempo Real -->
-    <div class="row">
+    <div class="row g-4 animate-fade-in" style="animation-delay: 0.2s">
       <div class="col-md-6">
-        <div class="admin-panel">
-          <h3><i class="bi bi-terminal me-2"></i>Console Log</h3>
-          <div id="consoleLog"></div>
+        <div class="admin-panel h-100 p-0">
+          <div class="console-container">
+            <div class="console-header">
+              <span><i class="bi bi-terminal"></i>Console Log</span>
+              <button id="clearConsole" class="btn btn-sm btn-outline-light">
+                <i class="bi bi-trash"></i> Limpiar
+              </button>
+            </div>
+            <div id="consoleLog"></div>
+          </div>
         </div>
       </div>
       <div class="col-md-6">
-        <div class="admin-panel">
-          <h3><i class="bi bi-chat-dots me-2"></i>Mensajería en Tiempo Real</h3>
-          <div id="botChat"></div>
-          <div class="input-group mt-2">
-            <input type="text" id="chatInput" class="form-control" placeholder="Escribe un mensaje para el bot...">
-            <button id="sendChatBtn" class="btn btn-primary">Enviar</button>
+        <div class="admin-panel h-100 p-0">
+          <div class="chat-container">
+            <div class="chat-header">
+              <span><i class="bi bi-chat-dots"></i>Mensajería en Tiempo Real</span>
+              <button id="clearChat" class="btn btn-sm btn-outline-light">
+                <i class="bi bi-trash"></i> Limpiar
+              </button>
+            </div>
+            <div id="botChat"></div>
+            <div class="chat-input-container">
+              <input type="text" id="chatInput" placeholder="Escribe un mensaje para el bot...">
+              <button id="sendChatBtn">
+                <i class="bi bi-send-fill"></i>
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    
-    <!-- Panel de Respuestas Configuradas -->
-    <div class="admin-panel">
-      <h3><i class="bi bi-list-check me-2"></i>Respuestas configuradas</h3>
+
+  <!-- Panel de Respuestas Configuradas -->
+    <div class="admin-panel animate-fade-in" style="animation-delay: 0.3s">
+      <h3><i class="bi bi-list-check"></i>Respuestas configuradas</h3>
       <div class="btn-action-group">
-        <div class="btn-group">
-          <button id="exportResponses" class="btn btn-info">
-            <i class="bi bi-download me-1"></i> Exportar respuestas
-          </button>
-          <button id="importResponses" class="btn btn-success">
-            <i class="bi bi-upload me-1"></i> Importar respuestas
-          </button>
-          <button id="refreshResponses" class="btn btn-primary">
-            <i class="bi bi-arrow-clockwise me-1"></i> Actualizar respuestas
-          </button>
-        </div>
+        <button id="exportResponses" class="btn btn-info">
+          <i class="bi bi-download"></i> Exportar respuestas
+        </button>
+        <button id="importResponses" class="btn btn-success">
+          <i class="bi bi-upload"></i> Importar respuestas
+        </button>
+        <button id="refreshResponses" class="btn btn-primary">
+          <i class="bi bi-arrow-clockwise"></i> Actualizar respuestas
+        </button>
       </div>
       <div class="table-responsive">
         <table class="table table-striped">
-          <thead class="table-dark">
+          <thead>
             <tr>
               <th>Cuando el usuario escriba</th>
               <th>El bot responderá</th>
@@ -155,43 +519,46 @@ function createAdminHtml() {
     </div>
     
     <!-- Panel de configuración de IA -->
-    <div class="admin-panel">
-      <h3><i class="bi bi-robot me-2"></i>Configuración de IA (OpenAI)</h3>
+    <div class="admin-panel animate-fade-in" style="animation-delay: 0.4s">
+      <h3><i class="bi bi-robot"></i>Configuración de IA (OpenAI)</h3>
       <div class="alert alert-info">
         <i class="bi bi-info-circle-fill me-2"></i>
-        <strong>Nota:</strong> La API Key de OpenAI ahora se gestiona a través del archivo <code>.env</code> en el servidor. 
-        Por motivos de seguridad, este valor no se puede editar desde la interfaz web.
+        <strong>Nota:</strong> Configura cómo responderá la IA cuando no haya una respuesta predefinida.
       </div>
       <form id="aiConfigForm">
         <div class="mb-3">
-          <label for="aiModel" class="form-label">Modelo</label>
+          <label for="aiModel" class="form-label">Modelo de IA</label>
           <select class="form-select" id="aiModel">
-            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-            <option value="gpt-4">GPT-4</option>
+            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (más rápido)</option>
+            <option value="gpt-4">GPT-4 (más inteligente)</option>
           </select>
         </div>
         <div class="mb-3">
           <label for="privateMessage" class="form-label">Mensaje de redirección al privado</label>
           <textarea class="form-control" id="privateMessage" rows="2"></textarea>
+          <div class="form-text">Este mensaje se añadirá automáticamente cuando corresponda.</div>
         </div>
         <div class="form-check mb-3">
-          <input class="form-check-input" type="checkbox" id="alwaysRedirect" checked>
+          <input class="form-check-input" type="checkbox" id="alwaysRedirect">
           <label class="form-check-label" for="alwaysRedirect">
             Siempre redirigir al privado
           </label>
+          <div class="form-text">Si está desactivado, solo redirigirá en consultas específicas.</div>
         </div>
-        <button type="submit" class="btn btn-primary">Guardar configuración</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-circle"></i> Guardar configuración
+        </button>
       </form>
     </div>
   </div>
 
   <!-- Modal para importar respuestas -->
   <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="importModalLabel">Importar respuestas</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
           <div class="mb-3">
@@ -206,8 +573,10 @@ function createAdminHtml() {
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-primary" id="confirmImport">Importar</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-success" id="confirmImport">
+            <i class="bi bi-check2"></i> Importar
+          </button>
         </div>
       </div>
     </div>
@@ -234,26 +603,45 @@ function createAdminHtml() {
     const importBtn = document.getElementById('importResponses');
     const refreshBtn = document.getElementById('refreshResponses');
     const confirmImportBtn = document.getElementById('confirmImport');
+    const clearConsoleBtn = document.getElementById('clearConsole');
+    const clearChatBtn = document.getElementById('clearChat');
     
     // Función para mostrar/ocultar overlay de carga
     function toggleLoading(show) {
       loadingOverlay.style.display = show ? 'flex' : 'none';
     }
 
+    // Manejo de reconexión
+    socket.on('disconnect', () => {
+      console.error('Conexión perdida. Intentando reconectar...');
+      showToast('Conexión perdida. Intentando reconectar...', 'error');
+    });
+
+    socket.on('connect', () => {
+      if (socket.hasReconnected) {
+        console.log('Reconectado al servidor');
+        showToast('Conexión restablecida', 'success');
+        // Refrescar datos después de reconexión
+        socket.emit('getResponses');
+        socket.emit('getAIConfig');
+      }
+      socket.hasReconnected = true;
+    });
+
     // Función para mostrar notificaciones (toast)
     function showToast(message, type = 'success') {
       const toastId = 'toast-' + Date.now();
-      const toastHtml = \`
-        <div id="\${toastId}" class="toast align-items-center text-white bg-\${type === 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
+      const toastHtml = `
+        <div id="${toastId}" class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
           <div class="d-flex">
             <div class="toast-body">
-              <i class="bi bi-\${type === 'success' ? 'check-circle' : 'exclamation-circle'}-fill me-2"></i>
-              \${message}
+              <i class="bi bi-${type === 'success' ? 'check-circle' : 'exclamation-circle'}-fill me-2"></i>
+              ${message}
             </div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
           </div>
         </div>
-      \`;
+      `;
       toastContainer.insertAdjacentHTML('beforeend', toastHtml);
       const toastElement = document.getElementById(toastId);
       const toast = new bootstrap.Toast(toastElement, {
@@ -283,12 +671,14 @@ function createAdminHtml() {
         privateRedirect: document.getElementById('alwaysRedirect').checked
       };
       
+      toggleLoading(true);
       socket.emit('updateAIConfig', config);
     });
 
     // Confirmar actualización
     socket.on('aiConfigUpdated', () => {
-      showToast('Configuración de IA actualizada', 'success');
+      toggleLoading(false);
+      showToast('Configuración de IA actualizada correctamente');
     });
 
     // Cargar respuestas existentes
@@ -299,35 +689,40 @@ function createAdminHtml() {
       toggleLoading(false);
       responsesTable.innerHTML = '';
       if (!responses || Object.keys(responses).length === 0) {
-        responsesTable.innerHTML = '<tr><td colspan="3" class="text-center">No hay respuestas configuradas</td></tr>';
+        responsesTable.innerHTML = '<tr><td colspan="3" class="text-center py-4">No hay respuestas configuradas</td></tr>';
         return;
       }
-      for (const [trigger, response] of Object.entries(responses)) {
+      
+      // Ordenar las respuestas alfabéticamente
+      const sortedTriggers = Object.keys(responses).sort();
+      
+      sortedTriggers.forEach(trigger => {
+        const response = responses[trigger];
         const row = document.createElement('tr');
         
-        row.innerHTML = \`
-          <td>\${trigger}</td>
-          <td>\${response}</td>
+        row.innerHTML = `
+          <td>${trigger}</td>
+          <td>${response}</td>
           <td>
-            <button class="btn btn-sm btn-warning edit-btn" data-trigger="\${trigger}">
+            <button class="btn btn-sm btn-warning edit-btn" data-trigger="${trigger}">
               <i class="bi bi-pencil-fill"></i> Editar
             </button>
-            <button class="btn btn-sm btn-danger delete-btn" data-trigger="\${trigger}">
+            <button class="btn btn-sm btn-danger delete-btn" data-trigger="${trigger}">
               <i class="bi bi-trash-fill"></i> Eliminar
             </button>
-            <button class="btn btn-sm btn-info quick-btn" data-trigger="\${trigger}">
+            <button class="btn btn-sm btn-info quick-btn" data-trigger="${trigger}">
               <i class="bi bi-lightning-charge-fill"></i> Respuesta Rápida
             </button>
           </td>
-        \`;
+        `;
         
         responsesTable.appendChild(row);
-      }
+      });
       
       // Agregar event listeners a los botones
       document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-          const trigger = e.target.closest('.edit-btn').getAttribute('data-trigger');
+          const trigger = e.currentTarget.getAttribute('data-trigger');
           const response = responses[trigger];
           
           triggerInput.value = trigger;
@@ -338,7 +733,7 @@ function createAdminHtml() {
       
       document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-          const trigger = e.target.closest('.delete-btn').getAttribute('data-trigger');
+          const trigger = e.currentTarget.getAttribute('data-trigger');
           if (confirm('¿Estás seguro de eliminar esta respuesta?')) {
             toggleLoading(true);
             socket.emit('deleteResponse', trigger);
@@ -348,11 +743,17 @@ function createAdminHtml() {
       
       document.querySelectorAll('.quick-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-          const trigger = e.target.closest('.quick-btn').getAttribute('data-trigger');
+          const trigger = e.currentTarget.getAttribute('data-trigger');
           const response = responses[trigger];
-          if (confirm('¿Desea agregar esta respuesta como respuesta rápida?')) {
-            socket.emit('addQuickResponse', { trigger, response });
-          }
+          
+          // Verificar si ya existe como respuesta rápida
+          socket.emit('checkQuickResponse', { trigger }, (exists) => {
+            if (exists) {
+              showToast('Esta respuesta ya existe como respuesta rápida', 'error');
+            } else if (confirm('¿Desea agregar esta respuesta como respuesta rápida?')) {
+              socket.emit('addQuickResponse', { trigger, response });
+            }
+          });
         });
       });
     });
@@ -365,7 +766,8 @@ function createAdminHtml() {
       if (trigger && response) {
         toggleLoading(true);
         socket.emit('addResponse', { trigger, response });
-      }
+
+        }
     });
 
     // Confirmar acciones
@@ -384,13 +786,13 @@ function createAdminHtml() {
     });
     
     socket.on('quickResponseAdded', () => {
-      showToast('Respuesta rápida agregada correctamente', 'success');
+      showToast('Respuesta rápida agregada correctamente');
       socket.emit('getResponses');
     });
     
     socket.on('responsesImported', (data) => {
       toggleLoading(false);
-      showToast(\`\${data.count} respuestas importadas correctamente\`, 'success');
+      showToast(`${data.count} respuestas importadas correctamente`);
       socket.emit('getResponses');
     });
     
@@ -403,6 +805,7 @@ function createAdminHtml() {
     // Escuchar eventos para Console Log
     socket.on('consoleLog', (msg) => {
       const entry = document.createElement('div');
+      entry.className = 'console-entry';
       entry.textContent = msg;
       consoleLogDiv.appendChild(entry);
       consoleLogDiv.scrollTop = consoleLogDiv.scrollHeight;
@@ -411,7 +814,13 @@ function createAdminHtml() {
     // Escuchar eventos para Mensajería en tiempo real
     socket.on('botChatMessage', (data) => {
       const entry = document.createElement('div');
-      entry.innerHTML = \`<strong>\${data.from}:</strong> \${data.message}\`;
+      entry.className = 'chat-message ' + (data.from === 'ADMIN' ? 'user-message' : 'bot-message');
+      
+      entry.innerHTML = `
+        <div class="chat-sender">${data.from}</div>
+        ${data.message}
+      `;
+      
       botChatDiv.appendChild(entry);
       botChatDiv.scrollTop = botChatDiv.scrollHeight;
     });
@@ -420,6 +829,16 @@ function createAdminHtml() {
     sendChatBtn.addEventListener('click', () => {
       const message = chatInput.value.trim();
       if (message) {
+        // Añadir mensaje del usuario al chat
+        const entry = document.createElement('div');
+        entry.className = 'chat-message user-message';
+        entry.innerHTML = `
+          <div class="chat-sender">ADMIN</div>
+          ${message}
+        `;
+        botChatDiv.appendChild(entry);
+        botChatDiv.scrollTop = botChatDiv.scrollHeight;
+        
         socket.emit('adminChatMessage', message);
         chatInput.value = '';
       }
@@ -435,7 +854,12 @@ function createAdminHtml() {
     // Exportar respuestas
     exportBtn.addEventListener('click', () => {
       toggleLoading(true);
-      socket.emit('getResponses', (responses) => {
+      
+      // Usamos una función normal sin callback (para consistencia)
+      socket.emit('getResponsesForExport');
+      
+      // Y escuchamos un evento específico para exportación
+      socket.on('responsesForExport', (responses) => {
         toggleLoading(false);
         // Crear un blob con los datos
         const data = JSON.stringify({ responses }, null, 2);
@@ -445,7 +869,7 @@ function createAdminHtml() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = \`respuestas_whatsapp_\${new Date().toISOString().slice(0,10)}.json\`;
+        a.download = `respuestas_whatsapp_${new Date().toISOString().slice(0,10)}.json`;
         document.body.appendChild(a);
         a.click();
         
@@ -510,6 +934,16 @@ function createAdminHtml() {
       toggleLoading(true);
       socket.emit('forceReload');
     });
+    
+    // Limpiar console log
+    clearConsoleBtn.addEventListener('click', () => {
+      consoleLogDiv.innerHTML = '';
+    });
+    
+    // Limpiar chat
+    clearChatBtn.addEventListener('click', () => {
+      botChatDiv.innerHTML = '';
+    });
 
     // Mantener la conexión activa
     setInterval(() => {
@@ -518,7 +952,7 @@ function createAdminHtml() {
   </script>
 </body>
 </html>`;
-
+  
   // Crear carpeta public si no existe
   if (!fs.existsSync(config.paths.public)) {
     fs.mkdirSync(config.paths.public, { recursive: true });
