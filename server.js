@@ -736,7 +736,7 @@ function setupServer() {
   });
 
   // Puerto para Railway o local
-  const PORT = process.env.PORT || 3000;  // Cambiado de 0 a 3000
+  const PORT = process.env.PORT || 5000;  // Cambiado de 0 a 3000
   const HOST = process.env.HOST || '0.0.0.0';  // Mantenemos esta línea
 
   server.listen(PORT, HOST, () => {
