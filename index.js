@@ -598,7 +598,7 @@ async function main() {
     const manager = new WhatsAppManager();
     
     // Agregar algunas cuentas (reemplaza con tus números)
-    manager.addAccount('5212345678901', 'cuenta_principal');
+    manager.addAccount('4962541655', 'cuenta_principal');
     // manager.addAccount('5209876543210', 'cuenta_respaldo');
     
     // Emitir estado inicial
