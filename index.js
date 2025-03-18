@@ -5,7 +5,6 @@ const fs = require('fs');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const logger = require('./modules/utils/logger');
-const utils = require('./modules/utils/utils');
 const publicarRoute = require('./routes/publicar');
 
 const express = require('express');
