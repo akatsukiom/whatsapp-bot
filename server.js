@@ -5,22 +5,6 @@ const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
-// Incluir la ruta de publicación
-const publicarRoute = require('./routes/publicar');
-
-
-module.exports = function setupServer() {
-  const app = express();
-  const server = http.createServer(app);
-  const io = socketIo(server);
-
-  // Agregar rutas de API
-  app.use('/api', publicarRoute);
-
-  // Resto de tu configuración de servidor...
-
-  return { app, server, io };
-}
 
 // Cargar variables de entorno
 dotenv.config();
@@ -51,8 +35,8 @@ try {
       learningData: path.resolve(__dirname, 'learning-data.json')
     },
     server: {
-      port: process.env.PORT || 0,
-      host: process.env.HOST || 'localhost'
+      port: process.env.PORT || 3000, // Cambiado de 0 a 3000
+      host: process.env.HOST || '0.0.0.0'
     },
     openai: {
       apiKey: process.env.OPENAI_API_KEY || '',
@@ -101,12 +85,25 @@ function setupServer() {
 
   // Asegurar que todas las carpetas necesarias existen
   ensureDirectories();
+  
+  // Agregar un endpoint de salud para monitoreo
+  app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+  });
 
   // Servir archivos estáticos
   app.use(express.static(path.join(__dirname, 'public')));
 
   // Agregar soporte para JSON en las peticiones
   app.use(express.json());
+  
+  // Incluir la ruta de publicación - Movido aquí para evitar errores de carga
+  try {
+    const publicarRoute = require('./routes/publicar');
+    app.use('/api', publicarRoute);
+  } catch (err) {
+    console.error('Error al cargar rutas de publicación:', err);
+  }
 
   // Ruta principal
   app.get('/', (req, res) => {
@@ -739,15 +736,14 @@ function setupServer() {
   });
 
   // Puerto para Railway o local
- // En tu archivo server.js o index.js
+  const PORT = process.env.PORT || 3000;  // Cambiado de 0 a 3000
+  const HOST = process.env.HOST || '0.0.0.0';  // Mantenemos esta línea
 
-const PORT = process.env.PORT || 0;
-const HOST = process.env.HOST || '0.0.0.0';  // Agregamos esta línea
+  server.listen(PORT, HOST, () => {
+    const actualPort = server.address().port;
+    console.log(`Servidor web iniciado en el puerto ${actualPort}`);
+  });
 
-server.listen(PORT, HOST, () => {
-  const actualPort = server.address().port;
-  console.log(`Servidor web iniciado en el puerto ${actualPort}`);
-});
 
   return { app, server, io };
 }
