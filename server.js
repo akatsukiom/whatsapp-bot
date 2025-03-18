@@ -406,7 +406,38 @@ function setupServer() {
       }
     });
 
-    // Solicitar verificación de cuentas inactivas
+    // Forzar desconexión y regeneración completa
+    socket.on('forceReconnect', (sessionName) => {
+      try {
+        console.log(`Solicitud recibida para forzar reconexión de cuenta: ${sessionName}`);
+        if (global.whatsappManager) {
+          global.whatsappManager.forceDisconnectAndRegenerateQR(sessionName)
+            .then(() => {
+              console.log(`Reconexión forzada completada para la cuenta ${sessionName}`);
+            })
+            .catch(err => {
+              console.error(`Error al forzar reconexión: ${err.message}`);
+              socket.emit('qrRefreshError', { 
+                sessionName, 
+                error: err.message
+              });
+            });
+        } else {
+          console.error('WhatsAppManager no inicializado');
+          socket.emit('qrRefreshError', { 
+            sessionName, 
+            error: 'Gestor de WhatsApp no inicializado'
+          });
+        }
+      } catch (err) {
+        console.error('Error al procesar la solicitud de reconexión forzada:', err);
+        socket.emit('qrRefreshError', { 
+          sessionName, 
+          error: 'Error interno del servidor'
+        });
+      }
+    });
+// Solicitar verificación de cuentas inactivas
     socket.on('checkInactiveAccounts', () => {
       try {
         console.log('Solicitud recibida para verificar cuentas inactivas');

@@ -205,6 +205,7 @@ class WhatsAppManager {
         sessionName: formattedSessionName,
         client,
         status: 'initializing',
+        detail: 'Inicializando cliente de WhatsApp',
         active: this.accounts.length === 0, // Primera cuenta es activa por defecto
         timestamp: timestamp
       });
@@ -581,7 +582,6 @@ class WhatsAppManager {
   getAccountBySession(sessionName) {
     return this.accounts.find(a => a.sessionName === sessionName);
   }
-  
   // Eliminar una cuenta
   async removeAccount(sessionName) {
     const accountIndex = this.accounts.findIndex(
@@ -640,18 +640,51 @@ class WhatsAppManager {
       
       // Cerrar sesión actual si está conectada
       if (account.status === 'ready' || account.status === 'authenticated') {
-        await account.client.logout();
+        try {
+          await account.client.logout();
+          logger.info(`Sesión cerrada para la cuenta ${sessionName}`);
+        } catch (err) {
+          logger.warn(`Error al cerrar sesión: ${err.message}. Continuando de todos modos.`);
+          // Continuar de todos modos
+        }
       }
       
       // Destruir cliente actual
       if (account.client) {
-        await account.client.destroy();
+        try {
+          await account.client.destroy();
+          logger.info(`Cliente destruido para la cuenta ${sessionName}`);
+        } catch (err) {
+          logger.warn(`Error al destruir cliente: ${err.message}. Continuando de todos modos.`);
+          // Continuar de todos modos
+        }
       }
       
       // Eliminar archivos de sesión
       const sessionDir = path.join(process.cwd(), '.wwebjs_auth', sessionName);
       if (fs.existsSync(sessionDir)) {
-        fs.rmSync(sessionDir, { recursive: true, force: true });
+        try {
+          fs.rmSync(sessionDir, { recursive: true, force: true });
+          logger.info(`Directorio de sesión eliminado: ${sessionDir}`);
+        } catch (err) {
+          logger.error(`Error al eliminar directorio de sesión: ${err.message}`);
+          // Continuar de todos modos
+        }
+      }
+      
+      // Actualizar estado para que la interfaz muestre el estado correcto
+      account.status = 'initializing';
+      account.detail = 'Reinicializando cliente para generar QR';
+      
+      if (this.io) {
+        this.io.emit('status', {
+          sessionName: account.sessionName,
+          phoneNumber: account.phoneNumber,
+          status: account.status,
+          detail: account.detail || '',
+          progress: 20,
+          active: account.active || false
+        });
       }
       
       // Crear nuevo cliente
@@ -687,6 +720,109 @@ class WhatsAppManager {
       return true;
     } catch (err) {
       logger.error(`Error al regenerar QR para ${sessionName}:`, err);
+      
+      // Notificar error al cliente
+      if (this.io) {
+        this.io.emit('qrRefreshError', { 
+          sessionName, 
+          error: err.message 
+        });
+      }
+      
+      throw err;
+    }
+  }
+
+  // Forzar desconexión y regeneración de QR
+  async forceDisconnectAndRegenerateQR(sessionName) {
+    try {
+      logger.info(`Forzando desconexión y regeneración de QR para ${sessionName}`);
+      
+      const account = this.getAccountBySession(sessionName);
+      if (!account) {
+        throw new Error(`Cuenta ${sessionName} no encontrada`);
+      }
+      
+      // Notificar al cliente que comenzó el proceso
+      if (this.io) {
+        this.io.emit('qrRefreshStarted', { sessionName });
+      }
+      
+      // Forzar cierre de la sesión actual
+      if (account.client) {
+        try {
+          // Intentar cerrar sesión normalmente primero
+          await account.client.logout().catch(err => {
+            logger.warn(`No se pudo cerrar sesión normalmente: ${err.message}. Procediendo a forzar...`);
+          });
+          
+          // Destruir el cliente independientemente del resultado anterior
+          await account.client.destroy();
+        } catch (err) {
+          logger.warn(`Error al destruir cliente: ${err.message}. Continuando con el proceso...`);
+        }
+      }
+      
+      // Eliminar archivos de sesión forzadamente
+      const sessionDir = path.join(process.cwd(), '.wwebjs_auth', sessionName);
+      if (fs.existsSync(sessionDir)) {
+        try {
+          fs.rmSync(sessionDir, { recursive: true, force: true });
+          logger.info(`Carpeta de sesión eliminada forzadamente: ${sessionDir}`);
+        } catch (err) {
+          logger.error(`No se pudo eliminar la carpeta de sesión: ${err.message}`);
+          // Continuar de todos modos
+        }
+      }
+      
+     // Actualizar el estado de la cuenta
+      account.status = 'initializing';
+      account.detail = 'Reinicializando después de desconexión forzada';
+      
+      // Notificar a los clientes
+      if (this.io) {
+        this.io.emit('status', {
+          sessionName: account.sessionName,
+          phoneNumber: account.phoneNumber,
+          status: account.status,
+          detail: account.detail,
+          progress: 20,
+          active: account.active
+        });
+      }
+      
+      // Crear nuevo cliente
+      const client = new Client({
+        authStrategy: new LocalAuth({ clientId: sessionName }),
+        puppeteer: {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu',
+            '--disable-software-rasterizer'
+          ],
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        }
+      });
+      
+      // Actualizar referencia en la cuenta
+      account.client = client;
+      
+      // Configurar eventos
+      this.setupClientEvents(client, account.phoneNumber, sessionName);
+      
+      // Inicializar cliente
+      client.initialize();
+      
+      logger.info(`Cliente reinicializado para la cuenta ${sessionName}`);
+      return true;
+    } catch (err) {
+      logger.error(`Error al forzar reinicio para ${sessionName}:`, err);
       
       // Notificar error al cliente
       if (this.io) {
@@ -745,7 +881,7 @@ async function main() {
     }, 2000);
     
     // INICIAR EL SERVIDOR AQUÍ (y solo aquí)
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 8080;
     const HOST = process.env.HOST || '0.0.0.0';
     
     server.listen(PORT, HOST, () => {

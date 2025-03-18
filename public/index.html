@@ -316,6 +316,7 @@
   <!-- Añadir Bootstrap JS para algunos componentes -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+
   <script>
     // Elementos del DOM
     const connectionAlert = document.getElementById('connection-alert');
@@ -572,6 +573,9 @@
               <button class="btn btn-warning btn-action refresh-qr-btn" data-session="${account.sessionName}">
                 <i class="bi bi-arrow-repeat me-1"></i> Regenerar QR
               </button>
+              <button class="btn btn-info btn-action force-reconnect-btn" data-session="${account.sessionName}">
+                <i class="bi bi-lightning-fill me-1"></i> Forzar Reconexión
+              </button>
               <button class="btn btn-danger btn-action logout-btn" data-session="${account.sessionName}" ${buttonDisabled ? 'disabled' : ''}>
                 <i class="bi bi-power me-1"></i> Cerrar sesión
               </button>
@@ -593,6 +597,11 @@
         const logoutBtn = accountElement.querySelector('.logout-btn');
         logoutBtn.addEventListener('click', () => {
           logoutAccount(account.sessionName);
+        });
+        
+        const forceReconnectBtn = accountElement.querySelector('.force-reconnect-btn');
+        forceReconnectBtn.addEventListener('click', () => {
+          forceReconnect(account.sessionName);
         });
         
         const deleteBtn = accountElement.querySelector('.delete-btn');
@@ -663,7 +672,7 @@
       
       toggleNoConnectionsMessage();
     }
-    
+
     // Función para cerrar sesión de una cuenta
     function logoutAccount(sessionName) {
       if (confirm('¿Estás seguro de cerrar la sesión de esta cuenta? Se eliminarán los datos de sesión y será necesario escanear un nuevo código QR.')) {
@@ -745,6 +754,26 @@
         
         socket.emit('refreshQR', sessionName);
         addLogEntry(`Solicitando regeneración de QR para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'info');
+      }
+    }
+    
+    // Función para forzar la reconexión de una cuenta
+    function forceReconnect(sessionName) {
+      if (confirm('¿Estás seguro de forzar la reconexión? Esto eliminará completamente la sesión actual.')) {
+        const accountElement = document.getElementById('account-' + sessionName);
+        if (accountElement) {
+          const forceReconnectBtn = accountElement.querySelector('.force-reconnect-btn');
+          if (forceReconnectBtn) {
+            forceReconnectBtn.disabled = true;
+            forceReconnectBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Reconectando...';
+          }
+        }
+        
+        // Añadir mensaje al log
+        addLogEntry(`Solicitando reconexión forzada para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'warning');
+        
+        // Enviar solicitud al servidor
+        socket.emit('forceReconnect', sessionName);
       }
     }
     
@@ -918,7 +947,7 @@
         }
       }
     });
-    
+
     // Manejar actualizaciones de estado
     socket.on('status', (data) => {
       console.log('Estado actualizado:', data);
@@ -1078,6 +1107,50 @@
         const qrElement = document.getElementById('qr-' + data.sessionName);
         if (qrElement) {
           qrElement.innerHTML = '<p class="alert alert-danger"><i class="bi bi-exclamation-circle-fill me-2"></i>Error al regenerar QR</p>';
+        }
+      }
+    });
+    
+    // Eventos para forzar reconexión
+    socket.on('forceReconnectStarted', (data) => {
+      addLogEntry(`Reconexión forzada iniciada para ${accounts[data.sessionName]?.phoneNumber || data.sessionName}`, 'info');
+      
+      // Actualizar estado en la interfaz
+      if (accounts[data.sessionName]) {
+        accounts[data.sessionName].status = 'initializing';
+        accounts[data.sessionName].detail = 'Reconectando forzadamente...';
+        renderAccount(accounts[data.sessionName]);
+      }
+    });
+    
+    socket.on('forceReconnectCompleted', (data) => {
+      addLogEntry(`Reconexión forzada completada para ${accounts[data.sessionName]?.phoneNumber || data.sessionName}`, 'success');
+      
+      // Restablecer el botón
+      const accountElement = document.getElementById('account-' + data.sessionName);
+      if (accountElement) {
+        const forceReconnectBtn = accountElement.querySelector('.force-reconnect-btn');
+        if (forceReconnectBtn) {
+          forceReconnectBtn.disabled = false;
+          forceReconnectBtn.innerHTML = '<i class="bi bi-lightning-fill me-1"></i> Forzar Reconexión';
+        }
+      }
+      
+      // Solicitar actualización completa
+      socket.emit('requestStatus');
+      socket.emit('requestSystemInfo');
+    });
+    
+    socket.on('forceReconnectError', (data) => {
+      addLogEntry(`Error al forzar reconexión: ${data.error || 'Error desconocido'}`, 'error');
+      
+      // Restablecer el botón
+      const accountElement = document.getElementById('account-' + data.sessionName);
+      if (accountElement) {
+        const forceReconnectBtn = accountElement.querySelector('.force-reconnect-btn');
+        if (forceReconnectBtn) {
+          forceReconnectBtn.disabled = false;
+          forceReconnectBtn.innerHTML = '<i class="bi bi-lightning-fill me-1"></i> Forzar Reconexión';
         }
       }
     });
