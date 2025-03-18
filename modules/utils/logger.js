@@ -52,4 +52,55 @@ logger.info = logger.info.bind(logger);
 logger.warn = logger.warn.bind(logger);
 logger.error = logger.error.bind(logger);
 
+// Sobrescribir console.log para enviar también a Socket.IO
+const originalConsoleLog = console.log;
+console.log = function() {
+  // Mantener el comportamiento original
+  originalConsoleLog.apply(console, arguments);
+  
+  // Convertir los argumentos a una cadena de texto
+  const message = Array.from(arguments).map(arg => {
+    if (typeof arg === 'object') {
+      try {
+        return JSON.stringify(arg);
+      } catch (e) {
+        return String(arg);
+      }
+    }
+    return String(arg);
+  }).join(' ');
+  
+  // Enviar a Socket.IO si está disponible
+  if (global.io) {
+    global.io.emit('consoleLog', message);
+  }
+};
+
+// Sobrescribir también otros métodos de console
+const originalError = console.error;
+console.error = function() {
+  originalError.apply(console, arguments);
+  const message = `ERROR: ${Array.from(arguments).join(' ')}`;
+  if (global.io) {
+    global.io.emit('consoleLog', message);
+  }
+};
+
+const originalWarn = console.warn;
+console.warn = function() {
+  originalWarn.apply(console, arguments);
+  const message = `WARN: ${Array.from(arguments).join(' ')}`;
+  if (global.io) {
+    global.io.emit('consoleLog', message);
+  }
+};
+
+// También redirigir los logs del logger de Winston a Socket.IO
+logger.on('logging', (info) => {
+  if (global.io) {
+    const logMessage = `${info.timestamp} [${info.level.toUpperCase()}]: ${info.message}`;
+    global.io.emit('consoleLog', logMessage);
+  }
+});
+
 module.exports = logger;

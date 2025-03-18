@@ -59,6 +59,7 @@
     }
   </style>
 </head>
+
 <body>
   <!-- Overlay de carga -->
   <div id="loadingOverlay" class="loading-overlay">
@@ -256,6 +257,29 @@
       toast.show();
     }
 
+    // Función para obtener logs desde la API (respaldo)
+    function fetchLogs() {
+      if (consoleLogDiv.childElementCount === 0) {
+        fetch('/api/logs')
+          .then(response => response.json())
+          .then(data => {
+            if (data.logs && data.logs.length > 0) {
+              consoleLogDiv.innerHTML = ''; // Limpiar primero
+              data.logs.forEach(log => {
+                const entry = document.createElement('div');
+                entry.textContent = log;
+                consoleLogDiv.appendChild(entry);
+              });
+              consoleLogDiv.scrollTop = consoleLogDiv.scrollHeight;
+            }
+          })
+          .catch(err => console.error('Error al obtener logs:', err));
+      }
+    }
+
+    // Intentar obtener logs cada 10 segundos si no hay ninguno
+    setInterval(fetchLogs, 10000);
+
     // Cargar configuración de IA al iniciar
     socket.emit('getAIConfig');
 
@@ -289,7 +313,7 @@
     // Cargar respuestas existentes
     toggleLoading(true);
     socket.emit('getResponses');
-    
+
     socket.on('responsesList', (responses) => {
       toggleLoading(false);
       responsesTable.innerHTML = '';
@@ -429,28 +453,30 @@
     // Exportar respuestas
     exportBtn.addEventListener('click', () => {
       toggleLoading(true);
-      socket.emit('getResponses', (responses) => {
-        toggleLoading(false);
-        // Crear un blob con los datos
-        const data = JSON.stringify({ responses }, null, 2);
-        const blob = new Blob([data], { type: 'application/json' });
-        
-        // Crear un enlace para descargar
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `respuestas_whatsapp_${new Date().toISOString().slice(0,10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        
-        // Limpiar
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 100);
-        
-        showToast('Respuestas exportadas correctamente');
-      });
+      socket.emit('getResponsesForExport');
+    });
+    
+    socket.on('responsesForExport', (responses) => {
+      toggleLoading(false);
+      // Crear un blob con los datos
+      const data = JSON.stringify({ responses }, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      
+      // Crear un enlace para descargar
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `respuestas_whatsapp_${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      showToast('Respuestas exportadas correctamente');
     });
     
     // Mostrar modal para importar
@@ -509,6 +535,9 @@
     setInterval(() => {
       socket.emit('ping');
     }, 30000);
+
+    // Reportar conexión a la consola
+    console.log('Panel de administración inicializado. ' + new Date().toISOString());
   </script>
 </body>
 </html>

@@ -71,7 +71,17 @@ function ensureDirectories() {
 function setupServer() {
   const app = express();
   const server = http.createServer(app);
-  const io = socketIo(server);
+  const io = socketIo(server, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+      allowedHeaders: ["*"],
+      credentials: true
+    }
+  });
+
+  // Hacer io disponible globalmente para usar en otros archivos
+  global.io = io;
 
   // Asegurar que todas las carpetas necesarias existen
   ensureDirectories();
@@ -120,6 +130,24 @@ function setupServer() {
     res.sendFile(adminPath);
   });
 
+  // Ruta para obtener logs recientes a través de API
+  app.get('/api/logs', (req, res) => {
+    try {
+      const logPath = path.join(__dirname, 'logs', 'app.log');
+      let logs = [];
+      
+      if (fs.existsSync(logPath)) {
+        const content = fs.readFileSync(logPath, 'utf8');
+        logs = content.split('\n').filter(Boolean).slice(-100);
+      }
+      
+      res.json({ logs });
+    } catch (error) {
+      console.error('Error al leer logs:', error);
+      res.status(500).json({ error: 'Error al leer logs' });
+    }
+  });
+
   // Configurar eventos Socket.IO para administración
   io.on('connection', (socket) => {
     console.log('Cliente web conectado');
@@ -133,6 +161,9 @@ function setupServer() {
       progress: 20,
       message: 'Inicializando sistema de WhatsApp Bot'
     });
+
+    // Enviar mensaje de log para confirmar conexión
+    socket.emit('consoleLog', 'Conexión establecida con el servidor. ' + new Date().toISOString());
 
     // Ping / pong para mantener las conexiones vivas y medir latencia
     socket.on('ping', () => {
@@ -425,6 +456,35 @@ function setupServer() {
       }
     });
 
+    // Evento específico para exportación de respuestas
+    socket.on('getResponsesForExport', () => {
+      try {
+        console.log('Solicitud recibida para exportar respuestas');
+        if (global.whatsappManager) {
+          const responses = global.whatsappManager.getAllResponses();
+          socket.emit('responsesForExport', responses);
+        } else {
+          // Intentar cargar directamente del archivo
+          const learningDataPath = path.join(__dirname, 'learning-data.json');
+          if (fs.existsSync(learningDataPath)) {
+            try {
+              const data = fs.readFileSync(learningDataPath, 'utf8');
+              const learningData = JSON.parse(data);
+              socket.emit('responsesForExport', learningData.responses || {});
+            } catch (parseError) {
+              console.error('Error al parsear JSON:', parseError);
+              socket.emit('error', 'El archivo de respuestas contiene JSON inválido');
+            }
+          } else {
+            socket.emit('error', 'Archivo de respuestas no encontrado');
+          }
+        }
+      } catch (err) {
+        console.error('Error al exportar respuestas:', err);
+        socket.emit('error', 'Error al exportar respuestas: ' + err.message);
+      }
+    });
+
     // Importar respuestas
     socket.on('importResponses', (data) => {
       try {
@@ -562,6 +622,22 @@ function setupServer() {
       } catch (err) {
         console.error('Error al eliminar respuesta:', err);
         socket.emit('error', 'No se pudo eliminar la respuesta: ' + err.message);
+      }
+    });
+
+    // Verificar si un trigger ya existe como respuesta rápida
+    socket.on('checkQuickResponse', (data, callback) => {
+      try {
+        if (global.whatsappManager) {
+          const responses = global.whatsappManager.getAllResponses();
+          const exists = responses[data.trigger] !== undefined;
+          callback(exists);
+        } else {
+          callback(false);
+        }
+      } catch (err) {
+        console.error('Error al verificar respuesta rápida:', err);
+        callback(false);
       }
     });
 
