@@ -87,14 +87,73 @@ class WhatsAppManager {
     logger.info('WhatsAppManager inicializado correctamente');
   }
   
+  // Limpiar sesiones duplicadas
+  async cleanupDuplicateSessions() {
+    try {
+      logger.info('Verificando sesiones duplicadas...');
+      
+      // Obtener la lista de números de teléfono únicos
+      const uniquePhoneNumbers = [...new Set(this.accounts.map(a => a.phoneNumber))];
+      
+      // Para cada número único, conservar solo la sesión más reciente o la que esté activa
+      for (const phone of uniquePhoneNumbers) {
+        const accountsWithSamePhone = this.accounts.filter(a => a.phoneNumber === phone);
+        
+        if (accountsWithSamePhone.length > 1) {
+          logger.warn(`Se encontraron ${accountsWithSamePhone.length} sesiones para el número ${phone}. Conservando solo una.`);
+          
+          // Verificar si alguna está conectada
+          const connectedAccount = accountsWithSamePhone.find(a => 
+            a.status === 'ready' || a.status === 'authenticated');
+          
+          if (connectedAccount) {
+            // Si hay una conectada, conservar esa y eliminar las demás
+            for (const account of accountsWithSamePhone) {
+              if (account.sessionName !== connectedAccount.sessionName) {
+                logger.info(`Eliminando sesión duplicada ${account.sessionName} para número ${phone}`);
+                await this.removeAccount(account.sessionName);
+              }
+            }
+          } else {
+            // Si ninguna está conectada, ordenar por fecha y conservar la más reciente
+            accountsWithSamePhone.sort((a, b) => {
+              // Si tiene timestamp, usar eso, de lo contrario usar el timestamp del nombre de sesión
+              const timeA = a.timestamp || parseInt(a.sessionName.split('_')[1] || 0);
+              const timeB = b.timestamp || parseInt(b.sessionName.split('_')[1] || 0);
+              return timeB - timeA;
+            });
+            
+            // Conservar solo la primera (más reciente) y eliminar el resto
+            for (let i = 1; i < accountsWithSamePhone.length; i++) {
+              const account = accountsWithSamePhone[i];
+              logger.info(`Eliminando sesión duplicada ${account.sessionName} para número ${phone}`);
+              await this.removeAccount(account.sessionName);
+            }
+          }
+        }
+      }
+      
+      logger.info('Limpieza de sesiones duplicadas completada');
+    } catch (err) {
+      logger.error(`Error al limpiar sesiones duplicadas: ${err.message}`);
+    }
+  }
+  
   // Agregar cuenta
   addAccount(phoneNumber, sessionName = '') {
     const formattedSessionName = sessionName || `cuenta_${Date.now()}`;
     
-    // Evitar duplicados
-    const existingAccount = this.accounts.find(a => a.sessionName === formattedSessionName);
-    if (existingAccount) {
+    // Evitar duplicados por nombre de sesión
+    const existingSessionAccount = this.accounts.find(a => a.sessionName === formattedSessionName);
+    if (existingSessionAccount) {
       logger.warn(`Ya existe una cuenta con el nombre de sesión ${formattedSessionName}`);
+      return false;
+    }
+    
+    // Evitar duplicados por número de teléfono
+    const existingPhoneAccount = this.accounts.find(a => a.phoneNumber === phoneNumber);
+    if (existingPhoneAccount) {
+      logger.warn(`Ya existe una cuenta con el número ${phoneNumber}. No se permite duplicar números.`);
       return false;
     }
     
@@ -127,13 +186,17 @@ class WhatsAppManager {
         }
       });
       
+      // Registrar timestamp de creación para ordenamiento posterior
+      const timestamp = Date.now();
+      
       // Agregar a la lista de cuentas
       this.accounts.push({
         phoneNumber,
         sessionName: formattedSessionName,
         client,
         status: 'initializing',
-        active: this.accounts.length === 0 // Primera cuenta es activa por defecto
+        active: this.accounts.length === 0, // Primera cuenta es activa por defecto
+        timestamp: timestamp
       });
       
       // Configurar eventos del cliente
@@ -510,7 +573,7 @@ class WhatsAppManager {
   }
   
   // Eliminar una cuenta
-  removeAccount(sessionName) {
+  async removeAccount(sessionName) {
     const accountIndex = this.accounts.findIndex(
       account => account.sessionName === sessionName
     );
@@ -521,7 +584,7 @@ class WhatsAppManager {
       // Cerrar cliente si existe
       if (account.client) {
         try {
-          account.client.destroy();
+          await account.client.destroy();
         } catch (err) {
           logger.error(`Error al destruir cliente: ${err.message}`);
         }
@@ -659,6 +722,9 @@ async function main() {
   try {
     // Inicializar gestor de WhatsApp
     const manager = new WhatsAppManager();
+    
+    // Limpiar sesiones duplicadas
+    await manager.cleanupDuplicateSessions();
     
     // Agregar solo una cuenta (reemplaza con tu número real)
     manager.addAccount('4962541655', 'cuenta_principal');
