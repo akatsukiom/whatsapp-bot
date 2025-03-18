@@ -14,22 +14,23 @@ const qrcode = require('qrcode');
 const logger = require('./modules/utils/logger');
 const utils = require('./modules/utils/utils'); // utils definido aquí
 
+// Incluir la configuración del servidor pasando la instancia de app
+const setupServer = require('./server');
 
-const express = require('express');
-const app = express();
+// Configurar servidor
+const { app, server, io } = setupServer();
+
 
 // Cargar variables de entorno
 dotenv.config();
+// Configuraciones adicionales de Express que tenías
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Incluir la configuración del servidor pasando la instancia de app
-const setupServer = require('./server');
-setupServer(app);
 
 // Iniciar el servidor Express
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
+const server = server.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
 

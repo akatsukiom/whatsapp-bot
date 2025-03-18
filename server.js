@@ -7,10 +7,20 @@ const path = require('path');
 const dotenv = require('dotenv');
 // Incluir la ruta de publicación
 const publicarRoute = require('./routes/publicar');
-module.exports = (app) => {
-app.use('/api', publicarRoute);
-};
 
+
+module.exports = function setupServer() {
+  const app = express();
+  const server = http.createServer(app);
+  const io = socketIo(server);
+
+  // Agregar rutas de API
+  app.use('/api', publicarRoute);
+
+  // Resto de tu configuración de servidor...
+
+  return { app, server, io };
+}
 
 // Cargar variables de entorno
 dotenv.config();
