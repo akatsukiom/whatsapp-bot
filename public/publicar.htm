@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Publicar en Grupos</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    label { display: block; margin-top: 10px; }
+    input, textarea { width: 100%; padding: 8px; margin-top: 5px; }
+    button { margin-top: 15px; padding: 10px 15px; }
+    #response { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Publicar mensaje multimedia en todos los grupos</h1>
+  <form id="publishForm">
+    <label for="mediaPath">Ruta o URL de la imagen:</label>
+    <input type="text" id="mediaPath" name="mediaPath" required>
+
+    <label for="caption">Texto del mensaje:</label>
+    <textarea id="caption" name="caption" rows="4" required></textarea>
+
+    <button type="submit">Enviar a todos los grupos</button>
+  </form>
+  
+  <div id="response"></div>
+  
+  <script>
+    document.getElementById('publishForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const mediaPath = document.getElementById('mediaPath').value;
+      const caption = document.getElementById('caption').value;
+      
+      try {
+        const res = await fetch('/api/publicar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mediaPath, caption })
+        });
+        const data = await res.json();
+        document.getElementById('response').innerText = JSON.stringify(data, null, 2);
+      } catch (error) {
+        document.getElementById('response').innerText = 'Error: ' + error.message;
+      }
+    });
+  </script>
+</body>
+</html>

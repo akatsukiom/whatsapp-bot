@@ -6,6 +6,8 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const logger = require('./modules/utils/logger');
 const utils = require('./modules/utils/utils');
+const publicarRoute = require('./routes/publicar');
+app.use('/api', publicarRoute);
 
 // Cargar variables de entorno
 dotenv.config();
