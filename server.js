@@ -742,6 +742,8 @@ function setupServer() {
  // En tu archivo server.js o index.js
 
 const PORT = process.env.PORT || 0;
+const HOST = process.env.HOST || '0.0.0.0';  // Agregamos esta línea
+
 server.listen(PORT, HOST, () => {
   const actualPort = server.address().port;
   console.log(`Servidor web iniciado en el puerto ${actualPort}`);
