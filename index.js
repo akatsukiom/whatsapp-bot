@@ -1,56 +1,41 @@
-
 // index.js - Punto de entrada principal de la aplicación
 const express = require('express');
-const app = express();
-const path = require('path');
-const fs = require('fs');
-
-// index.js - Punto de entrada principal de la aplicación
 const path = require('path');
 const dotenv = require('dotenv');
 const fs = require('fs');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const logger = require('./modules/utils/logger');
-const utils = require('./modules/utils/utils'); // utils definido aquí
+const utils = require('./modules/utils/utils');
 
-// Incluir la configuración del servidor pasando la instancia de app
+// Incluir la configuración del servidor
 const setupServer = require('./server');
 
 // Configurar servidor
 const { app, server, io } = setupServer();
 
-
 // Cargar variables de entorno
 dotenv.config();
-// Configuraciones adicionales de Express que tenías
+
+// Configuraciones adicionales de Express
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-
-// Iniciar el servidor Express
-const PORT = process.env.PORT || 3000;
-const server = server.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
-});
-
-// Configuración del Socket.IO
-const { Server } = require('socket.io');
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
 
 // Hacer io disponible globalmente
 global.io = io;
 
-// Asegurar que las carpetas necesarias existen
-utils.ensureDirectories();
+// Iniciar el servidor
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Servidor escuchando en el puerto ${PORT}`);
+});
 
-// Configuración del servidor
-const setupServer = require('./server');
+// Asegurar que existe el directorio de templates
+const templatesDir = path.join(__dirname, 'templates');
+if (!fs.existsSync(templatesDir)) {
+  fs.mkdirSync(templatesDir, { recursive: true });
+  console.log(`Creado directorio de plantillas: ${templatesDir}`);
+}
 
 // Asegurar que existe la carpeta public y las plantillas HTML
 try {
@@ -101,6 +86,7 @@ if (process.env.OPENAI_API_KEY) {
   }
 }
 
+// A partir de aquí, pega todo el resto del código que tenías anteriormente (clase WhatsAppManager, función main(), etc.)
 // Clase para gestionar múltiples cuentas de WhatsApp
 class WhatsAppManager {
   constructor() {
