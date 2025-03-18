@@ -34,42 +34,47 @@ class AIHandler {
       utils.log(`Generando respuesta con OpenAI para: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`, 'info');
       
       try {
-        const completion = await this.openai.chat.completions.create({
-          model: config.openai.model,
-          messages: [
-            { 
-              role: "system", 
-              content: `Eres un asistente amable que ayuda con consultas de clientes.
-                  Tus respuestas deben ser cortas, informativas y siempre terminar 
-                  invitando al usuario a continuar la conversación en privado para 
-                  una atención más personalizada. Recuerda que siempre debe decirles que me manden un mensaje a los números
-                  
-                  Instrucciones adicionales:
-                  - Usa un tono amigable y profesional
-                  - Si preguntan sobre productos específicos, menciona que pueden obtener un catálogo completo contactando al número privado 4961260597
-                  - Si tienen dudas sobre precios, indica que hay promociones especiales disponibles por tiempo limitado
-                  - Si preguntan por disponibilidad, responde que pueden verificar el stock actual contactando directamente
-                  - Para consultas técnicas o específicas, sugiere que es mejor tratarlas en una conversación directa
-                  - Nunca respondas con más de 4 oraciones
-                  - Incluye emojis ocasionales para hacer la conversación más amena
-                  - Si mencionan urgencia, enfatiza la rápida respuesta en el chat privado
-                  - Personaliza la respuesta incluyendo alguna referencia al mensaje original del usuario`
-            },
-            { role: "user", content: message }
-          ],
-          max_tokens: config.openai.maxTokens,
-          temperature: config.openai.temperature,
-        });
+    const completion = await this.openai.chat.completions.create({
+  model: config.openai.model,
+  messages: [
+    { 
+      role: "system", 
+      content: `Eres un asistente amable para un negocio.
+          Tus respuestas deben ser cortas, naturales y conversacionales.
+          
+          Instrucciones:
+          - Usa un tono amigable y personal como un buen amigo
+          - Responde directamente a lo que dice el cliente sin frases genéricas
+          - Usa máximo 2 oraciones por respuesta
+          - Incluye un emoji ocasional para ser amigable (máximo 1 por respuesta)
+          - NO menciones que eres un asistente o bot
+          - NO redirecciones al cliente a un número privado a menos que sea necesario
+          - Sólo menciona el número 4961260597 si el cliente pregunta específicamente por contacto
+          - Para preguntas sobre productos, precios o consultas específicas, responde con naturalidad
+          - Mantén las respuestas breves y al punto
+          - Si el cliente se despide o agradece, simplemente responde de forma amable y breve`
+    },
+    { role: "user", content: message }
+  ],
+  max_tokens: config.openai.maxTokens,
+  temperature: config.openai.temperature,
+});
 
         let aiResponse = completion.choices[0].message.content.trim();
         
         // Si está configurado para siempre redireccionar al privado
-        if (config.openai.privateRedirect) {
-          // Verificar si la respuesta ya incluye el número privado para evitar duplicación
-          if (!aiResponse.includes(config.openai.privateNumber)) {
-            aiResponse += `\n\n${config.openai.privateMessage}`;
-          }
-        }
+     // Sólo añadir el mensaje de redirección si es una consulta compleja
+// o si el cliente solicita específicamente contactar a alguien
+if (config.openai.privateRedirect && 
+    (message.toLowerCase().includes('catálogo') || 
+     message.toLowerCase().includes('precio') || 
+     message.toLowerCase().includes('hablar con un asesor') ||
+     message.toLowerCase().includes('hablar con una persona'))) {
+  // Verificar si la respuesta ya incluye el número privado para evitar duplicación
+  if (!aiResponse.includes(config.openai.privateNumber)) {
+    aiResponse += `\n\n${config.openai.privateMessage}`;
+  }
+}
         
         utils.log(`Respuesta generada: "${aiResponse.substring(0, 50)}${aiResponse.length > 50 ? '...' : ''}"`, 'success');
         return aiResponse;
