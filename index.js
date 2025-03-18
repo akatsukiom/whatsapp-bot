@@ -8,9 +8,12 @@ const logger = require('./modules/utils/logger');
 const utils = require('./modules/utils/utils');
 const publicarRoute = require('./routes/publicar');
 
+const express = require('express');
+const app = express();
 
 // Cargar variables de entorno
 dotenv.config();
+app.use(express.json());
 
 // Montar la ruta de publicación
 const publicarRoute = require('./routes/publicar');
