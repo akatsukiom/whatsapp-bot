@@ -120,8 +120,10 @@ class WhatsAppManager {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
-          ]
+            '--disable-gpu',
+            '--disable-software-rasterizer'
+          ],
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
         }
       });
       
@@ -330,7 +332,7 @@ class WhatsAppManager {
   // Verificar si un mensaje es de un administrador
   isAdminMessage(message) {
     // Lista de números de administradores que pueden controlar el bot
-    const adminNumbers = ['52xxxxxxxxxx@c.us']; // Reemplazar con tu número
+    const adminNumbers = ['5214962541655@c.us']; // Reemplazar con tu número
     return adminNumbers.includes(message.from) && message.body.startsWith('!');
   }
   
@@ -375,7 +377,7 @@ class WhatsAppManager {
     }
   }
   
-  // Procesar mensaje normal de usuario
+  // Procesar mensaje normal de usuario - MÉTODO MEJORADO
   async processRegularMessage(message, account) {
     try {
       const msgText = message.body.trim().toLowerCase();
@@ -384,23 +386,41 @@ class WhatsAppManager {
       // Buscar respuesta en los datos de aprendizaje
       if (this.learningData.responses[msgText]) {
         response = this.learningData.responses[msgText];
+        logger.info(`Respuesta encontrada en base de datos para: "${msgText}"`);
       } 
       // Si no hay respuesta predefinida y está configurado OpenAI, usar IA
       else if (global.aiHandler) {
+        logger.info(`Intentando generar respuesta con IA para: "${msgText}"`);
         try {
           response = await global.aiHandler.generateResponse(message.body);
+          logger.info(`Respuesta de IA generada correctamente para: "${msgText}"`);
         } catch (error) {
-          logger.error('Error al generar respuesta con IA:', error);
-          response = "Lo siento, no pude procesar tu solicitud en este momento.";
+          logger.error(`Error al generar respuesta con IA: ${error.message}`);
+          response = "Lo siento, no pude procesar tu solicitud en este momento. Un agente te atenderá pronto.";
         }
+      } else {
+        logger.warn(`No hay manejador de IA configurado para mensajes sin respuesta predefinida`);
+        response = "Gracias por tu mensaje. Un agente te atenderá pronto.";
       }
       
+      // Siempre enviar una respuesta, incluso si es el mensaje predeterminado
       if (response) {
         await account.client.sendMessage(message.from, response);
         logger.info(`Respuesta enviada a ${message.from}: ${response.substring(0, 50)}...`);
+      } else {
+        // Última red de seguridad
+        const defaultResponse = "Gracias por contactarnos. Tu mensaje ha sido recibido y será atendido pronto.";
+        await account.client.sendMessage(message.from, defaultResponse);
+        logger.warn(`Respuesta predeterminada enviada a ${message.from} porque no se generó ninguna respuesta`);
       }
     } catch (err) {
-      logger.error('Error al procesar mensaje regular:', err);
+      logger.error(`Error al procesar mensaje regular: ${err.message}`);
+      try {
+        // Intentar enviar mensaje de error en caso de falla completa
+        await account.client.sendMessage(message.from, "Lo sentimos, hay un problema temporal con nuestro sistema. Por favor, intenta más tarde.");
+      } catch (sendError) {
+        logger.error(`Error crítico al enviar mensaje de error: ${sendError.message}`);
+      }
     }
   }
   
@@ -489,6 +509,47 @@ class WhatsAppManager {
     return this.accounts.find(a => a.sessionName === sessionName);
   }
   
+  // Eliminar una cuenta
+  removeAccount(sessionName) {
+    const accountIndex = this.accounts.findIndex(
+      account => account.sessionName === sessionName
+    );
+    
+    if (accountIndex >= 0) {
+      const account = this.accounts[accountIndex];
+      
+      // Cerrar cliente si existe
+      if (account.client) {
+        try {
+          account.client.destroy();
+        } catch (err) {
+          logger.error(`Error al destruir cliente: ${err.message}`);
+        }
+      }
+      
+      // Eliminar de la lista
+      this.accounts.splice(accountIndex, 1);
+      
+      // Eliminar directorio de sesión
+      const sessionDir = path.join(process.cwd(), '.wwebjs_auth', sessionName);
+      if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+      
+      logger.info(`Cuenta ${sessionName} eliminada correctamente`);
+      
+      // Si era la cuenta activa, activar otra cuenta
+      if (this.accounts.length > 0 && accountIndex === this.activeAccountIndex) {
+        this.activeAccountIndex = 0;
+        this.accounts[0].active = true;
+      }
+      
+      return true;
+    }
+    
+    return false;
+  }
+  
   // Regenerar código QR para una cuenta
   async regenerateQR(sessionName) {
     try {
@@ -532,8 +593,10 @@ class WhatsAppManager {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
-          ]
+            '--disable-gpu',
+            '--disable-software-rasterizer'
+          ],
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
         }
       });
       
@@ -597,9 +660,8 @@ async function main() {
     // Inicializar gestor de WhatsApp
     const manager = new WhatsAppManager();
     
-    // Agregar algunas cuentas (reemplaza con tus números)
+    // Agregar solo una cuenta (reemplaza con tu número real)
     manager.addAccount('4962541655', 'cuenta_principal');
-    // manager.addAccount('5209876543210', 'cuenta_respaldo');
     
     // Emitir estado inicial
     setTimeout(() => {
