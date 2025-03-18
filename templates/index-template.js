@@ -823,12 +823,13 @@ function createIndexHtml() {
           break;
       }
       
-      // Crear o actualizar el elemento de la cuenta
+   // Crear o actualizar el elemento de la cuenta
       let accountElement = document.getElementById('account-' + account.sessionName);
       
       if (!accountElement) {
         accountElement = document.createElement('div');
-accountElement.className = 'account-card account-' + statusClass + ' animate-fade-in';
+        accountElement.id = 'account-' + account.sessionName;
+        accountElement.className = 'account-card account-' + statusClass + ' animate-fade-in';
         
         accountElement.innerHTML = `
           <div class="account-header">
@@ -839,6 +840,9 @@ accountElement.className = 'account-card account-' + statusClass + ' animate-fad
               </button>
               <button class="btn btn-danger btn-sm logout-btn" data-session="${account.sessionName}" ${account.status !== 'ready' && account.status !== 'authenticated' ? 'disabled' : ''}>
                 <i class="bi bi-power me-1"></i> Cerrar sesión
+              </button>
+              <button class="btn btn-secondary btn-sm delete-btn" data-session="${account.sessionName}">
+                <i class="bi bi-trash me-1"></i> Eliminar
               </button>
             </div>
           </div>
@@ -881,6 +885,11 @@ accountElement.className = 'account-card account-' + statusClass + ' animate-fad
         const logoutBtn = accountElement.querySelector('.logout-btn');
         logoutBtn.addEventListener('click', () => {
           logoutAccount(account.sessionName);
+        });
+
+        const deleteBtn = accountElement.querySelector('.delete-btn');
+        deleteBtn.addEventListener('click', () => {
+          deleteAccount(account.sessionName);
         });
       } else {
         // Actualizar clase de estado
@@ -1013,7 +1022,24 @@ accountElement.className = 'account-card account-' + statusClass + ' animate-fad
         addLogEntry(`Solicitando regeneración de QR para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'info');
       }
     }
-    
+
+    // Función para eliminar una cuenta
+    function deleteAccount(sessionName) {
+      if (confirm('¿Estás seguro de eliminar esta cuenta? Se eliminarán todos los datos asociados.')) {
+        const accountElement = document.getElementById('account-' + sessionName);
+        if (accountElement) {
+          const deleteBtn = accountElement.querySelector('.delete-btn');
+          if (deleteBtn) {
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Eliminando...';
+          }
+        }
+        
+        socket.emit('removeAccount', sessionName);
+        addLogEntry(`Solicitando eliminar cuenta ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'warning');
+      }
+    }
+
     // Función para agregar nueva cuenta
     function addNewAccount() {
       const phoneNumber = phoneNumberInput.value.trim();
@@ -1264,6 +1290,40 @@ accountElement.className = 'account-card account-' + statusClass + ' animate-fad
           if (logoutBtn) {
             logoutBtn.disabled = false;
             logoutBtn.innerHTML = '<i class="bi bi-power me-1"></i> Cerrar sesión';
+          }
+        }
+      }
+    });
+    
+    // Manejar respuesta de eliminación de cuenta
+    socket.on('accountRemoved', (data) => {
+      if (data.success) {
+        addLogEntry(`Cuenta ${accounts[data.sessionName]?.phoneNumber || data.sessionName} eliminada correctamente`, 'success');
+        
+        // Eliminar la cuenta de nuestro registro
+        if (accounts[data.sessionName]) {
+          delete accounts[data.sessionName];
+        }
+        
+        // Eliminar el elemento del DOM
+        const accountElement = document.getElementById('account-' + data.sessionName);
+        if (accountElement) {
+          accountElement.remove();
+        }
+        
+        // Actualizar estadísticas
+        updateConnectionStats();
+        toggleNoAccountsMessage();
+      } else {
+        addLogEntry(`Error al eliminar cuenta: ${data.error || 'Error desconocido'}`, 'error');
+        
+        // Restablecer el botón
+        const accountElement = document.getElementById('account-' + data.sessionName);
+        if (accountElement) {
+          const deleteBtn = accountElement.querySelector('.delete-btn');
+          if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.innerHTML = '<i class="bi bi-trash me-1"></i> Eliminar';
           }
         }
       }
