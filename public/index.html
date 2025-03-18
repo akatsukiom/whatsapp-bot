@@ -143,23 +143,88 @@
     .action-buttons {
       margin-top: 10px;
     }
+    
+    /* Estilos mejorados para botones */
     .buttons-container {
       display: flex;
       flex-wrap: wrap;
-      gap: 5px;
-      margin-top: 10px;
+      gap: 8px;
+      margin-top: 15px;
     }
+    
     .btn-action {
       flex: 1;
+      min-width: 120px;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
       text-align: center;
-      white-space: nowrap;
-      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
     }
-
+    
+    .btn-action i {
+      margin-right: 5px;
+    }
+    
+    .btn-action:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .logout-btn {
+      background-color: #dc3545;
+      border-color: #dc3545;
+      color: white;
+    }
+    
+    .logout-btn:hover {
+      background-color: #c82333;
+      border-color: #bd2130;
+    }
+    
+    .delete-btn {
+      background-color: #6c757d;
+      border-color: #6c757d;
+      color: white;
+    }
+    
+    .delete-btn:hover {
+      background-color: #5a6268;
+      border-color: #545b62;
+    }
+    
+    .refresh-qr-btn {
+      background-color: #ffc107;
+      border-color: #ffc107;
+      color: #212529;
+    }
+    
+    .refresh-qr-btn:hover {
+      background-color: #e0a800;
+      border-color: #d39e00;
+    }
+    
+    .force-reconnect-btn {
+      background-color: #17a2b8;
+      border-color: #17a2b8;
+      color: white;
+    }
+    
+    .force-reconnect-btn:hover {
+      background-color: #138496;
+      border-color: #117a8b;
+    }
+    
+    /* Estilos responsivos para dispositivos móviles */
     @media (max-width: 576px) {
       .buttons-container {
         flex-direction: column;
       }
+      
       .btn-action {
         margin-bottom: 5px;
         width: 100%;
@@ -483,7 +548,7 @@
       }
     }
     
-    // Función para renderizar una cuenta
+    // Función mejorada para renderizar una cuenta
     function renderAccount(account) {
       // Determinar el estado visual
       let statusClass = '';
@@ -544,7 +609,7 @@
         accountElement.id = 'account-' + account.sessionName;
         accountElement.className = 'col-md-6 mb-4';
         
-        // Crear estructura HTML de la tarjeta
+        // Crear estructura HTML de la tarjeta con botones más prominentes
         accountElement.innerHTML = `
           <div class="qr-container ${account.active ? 'active' : ''}">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -685,7 +750,7 @@
           }
         }
         
-        socket.emit('logoutAccount', sessionName);
+      socket.emit('logoutAccount', sessionName);
         addLogEntry(`Solicitando cierre de sesión para ${accounts[sessionName]?.phoneNumber || sessionName}...`, 'warning');
       }
     }
@@ -733,7 +798,7 @@
         // Marcar como en proceso
         qrRefreshInProgress[sessionName] = true;
         
-       // Establecer un timeout para restablecer el estado después de 30 segundos
+        // Establecer un timeout para restablecer el estado después de 30 segundos
         setTimeout(() => {
           if (qrRefreshInProgress[sessionName]) {
             qrRefreshInProgress[sessionName] = false;
