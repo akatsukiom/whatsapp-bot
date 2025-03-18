@@ -51,7 +51,7 @@ try {
       learningData: path.resolve(__dirname, 'learning-data.json')
     },
     server: {
-      port: process.env.PORT || 8000,
+      port: process.env.PORT || 3000,
       host: process.env.HOST || 'localhost'
     },
     openai: {
