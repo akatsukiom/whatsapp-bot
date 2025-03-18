@@ -5,6 +5,8 @@ const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
+// Incluir la ruta de publicación
+const publicarRoute = require('./routes/publicar');
 
 // Cargar variables de entorno
 dotenv.config();
@@ -35,8 +37,8 @@ try {
       learningData: path.resolve(__dirname, 'learning-data.json')
     },
     server: {
-      port: process.env.PORT || 3000, // Cambiado de 0 a 3000
-      host: process.env.HOST || '0.0.0.0'
+      port: process.env.PORT || 5000,
+      host: process.env.HOST || 'localhost'
     },
     openai: {
       apiKey: process.env.OPENAI_API_KEY || '',
@@ -85,25 +87,15 @@ function setupServer() {
 
   // Asegurar que todas las carpetas necesarias existen
   ensureDirectories();
-  
-  // Agregar un endpoint de salud para monitoreo
-  app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-  });
 
   // Servir archivos estáticos
   app.use(express.static(path.join(__dirname, 'public')));
 
   // Agregar soporte para JSON en las peticiones
   app.use(express.json());
-  
-  // Incluir la ruta de publicación - Movido aquí para evitar errores de carga
-  try {
-    const publicarRoute = require('./routes/publicar');
-    app.use('/api', publicarRoute);
-  } catch (err) {
-    console.error('Error al cargar rutas de publicación:', err);
-  }
+
+  // Agregar rutas de API
+  app.use('/api', publicarRoute);
 
   // Ruta principal
   app.get('/', (req, res) => {
@@ -728,24 +720,17 @@ function setupServer() {
       socket.emit('heartbeat', { timestamp: Date.now() });
     }, 5000);
     
-    // Limpiar intervalos al desconectar
+ // Limpiar intervalos al desconectar
     socket.on('disconnect', () => {
       console.log('Cliente web desconectado');
       clearInterval(heartbeatInterval);
     });
   });
 
-  // Puerto para Railway o local
-  const PORT = process.env.PORT || 5000;  // Cambiado de 0 a 3000
-  const HOST = process.env.HOST || '0.0.0.0';  // Mantenemos esta línea
-
-  server.listen(PORT, HOST, () => {
-    const actualPort = server.address().port;
-    console.log(`Servidor web iniciado en el puerto ${actualPort}`);
-  });
-
-
+  // IMPORTANTE: NO INICIAR EL SERVIDOR AQUÍ
+  // Solo devolver los objetos app, server e io
   return { app, server, io };
 }
 
+// Exportar la función setupServer
 module.exports = setupServer;

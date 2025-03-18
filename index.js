@@ -11,7 +11,7 @@ const utils = require('./modules/utils/utils');
 // Incluir la configuración del servidor
 const setupServer = require('./server');
 
-// Configurar servidor
+// Configurar servidor (SOLO OBTENER LA CONFIGURACIÓN, NO LO INICIA)
 const { app, server, io } = setupServer();
 
 // Cargar variables de entorno
@@ -23,7 +23,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Hacer io disponible globalmente
 global.io = io;
-
 
 // Asegurar que existe el directorio de templates
 const templatesDir = path.join(__dirname, 'templates');
@@ -81,7 +80,6 @@ if (process.env.OPENAI_API_KEY) {
   }
 }
 
-// A partir de aquí, pega todo el resto del código que tenías anteriormente (clase WhatsAppManager, función main(), etc.)
 // Clase para gestionar múltiples cuentas de WhatsApp
 class WhatsAppManager {
   constructor() {
@@ -92,11 +90,6 @@ class WhatsAppManager {
     
     // Cargar datos de aprendizaje
     this.learningData = utils.loadLearningData() || { responses: {}, mediaHandlers: {} };
-    
-    // Configurar servidor
-    const serverConfig = setupServer();
-    this.server = serverConfig.server;
-    this.io = serverConfig.io;
     
     // Hacer disponible el manager globalmente
     global.whatsappManager = this;
@@ -750,6 +743,15 @@ async function main() {
     setTimeout(() => {
       manager.emitCurrentStatus();
     }, 2000);
+    
+    // INICIAR EL SERVIDOR AQUÍ (y solo aquí)
+    const PORT = process.env.PORT || 5000;
+    const HOST = process.env.HOST || '0.0.0.0';
+    
+    server.listen(PORT, HOST, () => {
+      const actualPort = server.address().port;
+      console.log(`Servidor web iniciado en el puerto ${actualPort}`);
+    });
     
     logger.info('WhatsApp Bot iniciado correctamente');
   } catch (err) {
