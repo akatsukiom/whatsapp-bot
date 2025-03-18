@@ -741,12 +741,12 @@ function setupServer() {
   // Puerto para Railway o local
  // En tu archivo server.js o index.js
 
-const PORT = process.env.PORT || 3000;
-const HOST = '0.0.0.0'; // Importante para Railway
-
+const PORT = process.env.PORT || 0;
 server.listen(PORT, HOST, () => {
-  console.log(`Servidor web iniciado en el puerto ${PORT}`);
+  const actualPort = server.address().port;
+  console.log(`Servidor web iniciado en el puerto ${actualPort}`);
 });
+
   return { app, server, io };
 }
 
