@@ -1,67 +1,51 @@
-FROM node:16-slim
+# Imagen base más reciente
+FROM node:20-bookworm-slim
 
-# Instalar dependencias esenciales para Puppeteer
-RUN apt-get update && apt-get install -y \
-    gconf-service \
-    libasound2 \
+# Instalar Chromium y librerías necesarias para Puppeteer / whatsapp-web.js
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    libnss3 \
+    libxss1 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
-    libc6 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgcc1 \
-    libgconf-2-4 \
-    libgdk-pixbuf2.0-0 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libstdc++6 \
-    libx11-6 \
+    libdrm2 \
+    libgbm1 \
+    libasound2 \
+    libxshmfence1 \
     libx11-xcb1 \
-    libxcb1 \
     libxcomposite1 \
-    libxcursor1 \
     libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
     libxrandr2 \
     libxrender1 \
-    libxss1 \
-    libxtst6 \
+    libxfixes3 \
+    libxi6 \
+    libgtk-3-0 \
     ca-certificates \
     fonts-liberation \
-    libappindicator1 \
-    libnss3 \
-    lsb-release \
-    xdg-utils \
     wget \
-    libgbm1 \
-    procps \
-    xvfb
+    && rm -rf /var/lib/apt/lists/*
 
 # Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de la aplicación
+# Copiar dependencias primero para cache
 COPY package*.json ./
-RUN npm install
+RUN npm install --omit=dev
 
 # Copiar el resto de la aplicación
 COPY . .
 
-# Crear carpetas necesarias
-RUN mkdir -p public
-RUN mkdir -p routes
-RUN mkdir -p src/handlers
+# Crear carpetas necesarias (por si tu código las espera)
+RUN mkdir -p public routes src/handlers
 
-# Exponer el puerto que usa la aplicación
-EXPOSE 8000
+# Variables de entorno para puppeteer
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    NODE_ENV=production \
+    PORT=3000
 
-# Iniciar la aplicación
-CMD ["node", "index.js"]
+# Exponer el puerto (ajusta según tu entrypoint, 3000 o 8000)
+EXPOSE 3000
+
+# Comando de inicio (ajusta a tu archivo principal)
+CMD ["node", "src/server.js"]
